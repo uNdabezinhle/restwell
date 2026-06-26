@@ -11,7 +11,7 @@ final dioProvider = Provider<Dio>((ref) {
     BaseOptions(
       baseUrl: const String.fromEnvironment(
         'RESTWELL_API_BASE_URL',
-        defaultValue: 'http://localhost:8000',
+        defaultValue: 'http://localhost:8001',
       ),
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),

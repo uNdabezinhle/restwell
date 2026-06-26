@@ -10,6 +10,18 @@ Copy `.env.example` to `.env`, then start the backend dependencies and API:
 make dev-up
 ```
 
+The local Docker stack intentionally uses alternate host ports so it can run beside other Django projects:
+
+- API: `http://localhost:8001`
+- PostgreSQL: `localhost:5433`
+- Redis: `localhost:6380`
+
+Health check:
+
+```text
+http://localhost:8001/api/health/
+```
+
 Run backend tests:
 
 ```bash
