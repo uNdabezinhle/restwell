@@ -17,3 +17,11 @@ class User(AbstractUser):
     @property
     def is_platform_admin(self):
         return self.is_superuser or self.role == self.Role.SUPER_ADMIN
+
+    @property
+    def is_tenant_admin(self):
+        return self.role == self.Role.TENANT_ADMIN
+
+    @property
+    def is_tenant_scoped(self):
+        return self.tenant_id is not None

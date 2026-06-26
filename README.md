@@ -24,4 +24,4 @@ make flutter-test
 
 ## Current Sprint
 
-Sprint 0 foundation is being built: Django REST backend, tenant and branch models, custom user roles, Flutter app shells, Docker Compose, and CI.
+Sprint 0 foundation is active: Django REST backend, JWT auth, tenant and branch models, custom user roles, Flutter admin login shell, Docker Compose, and CI.
