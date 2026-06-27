@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "tenants",
     "accounts",
+    "cases",
 ]
 
 MIDDLEWARE = [
