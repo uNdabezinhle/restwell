@@ -11,4 +11,5 @@ staticfiles/
 .flutter-plugins-dependencies
 build/
 .idea/
+*.iml
 .vscode/

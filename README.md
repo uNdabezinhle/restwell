@@ -13,6 +13,7 @@ make dev-up
 The local Docker stack intentionally uses alternate host ports so it can run beside other Django projects:
 
 - API: `http://localhost:8001`
+- Admin frontend: `http://localhost:4201`
 - PostgreSQL: `localhost:5433`
 - Redis: `localhost:6380`
 
@@ -28,7 +29,13 @@ Run backend tests:
 make backend-test
 ```
 
-Run Flutter tests after installing the Flutter SDK:
+Run the Dockerized admin frontend:
+
+```bash
+make frontend-admin-up
+```
+
+Run Flutter admin tests in Docker:
 
 ```bash
 make flutter-test
