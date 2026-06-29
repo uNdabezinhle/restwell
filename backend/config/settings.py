@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "mortuary",
     "geolocation",
     "branded_apps",
+    "onboarding",
 ]
 
 MIDDLEWARE = [

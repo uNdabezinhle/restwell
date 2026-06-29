@@ -30,4 +30,5 @@ urlpatterns = [
     path("api/mortuary/", include("mortuary.urls")),
     path("api/geolocation/", include("geolocation.urls")),
     path("api/branded-apps/", include("branded_apps.urls")),
+    path("api/onboarding/", include("onboarding.urls")),
 ]
