@@ -26,6 +26,8 @@ INSTALLED_APPS = [
     "financials",
     "inventory",
     "scheduling",
+    "branding",
+    "website_builder",
 ]
 
 MIDDLEWARE = [
