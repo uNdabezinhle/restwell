@@ -27,4 +27,6 @@ urlpatterns = [
     path("api/scheduling/", include("scheduling.urls")),
     path("api/branding/", include("branding.urls")),
     path("api/websites/", include("website_builder.urls")),
+    path("api/mortuary/", include("mortuary.urls")),
+    path("api/geolocation/", include("geolocation.urls")),
 ]

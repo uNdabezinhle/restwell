@@ -28,6 +28,8 @@ INSTALLED_APPS = [
     "scheduling",
     "branding",
     "website_builder",
+    "mortuary",
+    "geolocation",
 ]
 
 MIDDLEWARE = [
