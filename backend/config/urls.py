@@ -29,4 +29,5 @@ urlpatterns = [
     path("api/websites/", include("website_builder.urls")),
     path("api/mortuary/", include("mortuary.urls")),
     path("api/geolocation/", include("geolocation.urls")),
+    path("api/branded-apps/", include("branded_apps.urls")),
 ]

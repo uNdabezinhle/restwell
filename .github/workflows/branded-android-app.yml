@@ -1,0 +1,59 @@
+name: Branded Android App
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant_slug:
+        description: Tenant slug to brand
+        required: true
+      app_name:
+        description: Branded Android app name
+        required: true
+      package_name:
+        description: Android package name
+        required: true
+      primary_color:
+        description: Primary brand color
+        required: true
+        default: "#0F766E"
+      secondary_color:
+        description: Secondary brand color
+        required: true
+        default: "#2563EB"
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/client_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.3"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Ensure Android project exists
+        run: flutter create --platforms android --project-name restwell_client_app .
+
+      - name: Validate branded config
+        run: |
+          echo "Tenant: ${{ inputs.tenant_slug }}"
+          echo "App: ${{ inputs.app_name }}"
+          echo "Package: ${{ inputs.package_name }}"
+          echo "Primary: ${{ inputs.primary_color }}"
+          echo "Secondary: ${{ inputs.secondary_color }}"
+          flutter test
+
+      - name: Build Android APK
+        run: flutter build apk --release --dart-define=APP_NAME="${{ inputs.app_name }}" --dart-define=TENANT_SLUG="${{ inputs.tenant_slug }}" --dart-define=PRIMARY_COLOR="${{ inputs.primary_color }}" --dart-define=SECONDARY_COLOR="${{ inputs.secondary_color }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: branded-${{ inputs.tenant_slug }}-android-apk
+          path: frontend/client_app/build/app/outputs/flutter-apk/app-release.apk
