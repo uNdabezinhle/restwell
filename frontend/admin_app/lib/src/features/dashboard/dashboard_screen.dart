@@ -20,6 +20,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _ModuleConfig('Overview', Icons.dashboard_outlined, ''),
     _ModuleConfig(
         'Branches', Icons.account_tree_outlined, '/api/tenants/branches/'),
+    _ModuleConfig('Users', Icons.people_outline, '/api/accounts/users/'),
     _ModuleConfig('Cases', Icons.assignment_outlined, '/api/cases/'),
     _ModuleConfig('Deceased', Icons.person_outline, '/api/cases/deceased/'),
     _ModuleConfig(
@@ -284,6 +285,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             'is_active': true,
           }),
           'Branch created.',
+        );
+        return;
+      case 'Users':
+        if (branch == null) {
+          _showMessage('Create a branch first.');
+          return;
+        }
+        await _runAction(
+          () => create('/api/accounts/users/', {
+            'username': 'staff$suffix@restwell.local',
+            'email': 'staff$suffix@restwell.local',
+            'first_name': 'Demo',
+            'last_name': 'Staff $suffix',
+            'role': 'staff',
+            'branch': branch,
+            'password': 'RestWell123!',
+            'is_active': true,
+          }),
+          'Staff user created.',
         );
         return;
       case 'Family Members':
@@ -1122,6 +1142,7 @@ class _ModuleView extends StatelessWidget {
 bool _canCreate(String moduleTitle) {
   return {
     'Branches',
+    'Users',
     'Cases',
     'Deceased',
     'Family Members',

@@ -82,3 +82,82 @@ class JwtAuthTests(APITestCase):
         self.assertEqual(response.data["tenant"], self.tenant.id)
         self.assertEqual(response.data["branch"], self.branch.id)
         self.assertEqual(response.data["request_tenant"], self.tenant.id)
+
+
+class UserAdminApiTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Dignity Care", slug="dignity-care")
+        self.branch = Branch.objects.create(tenant=self.tenant, name="Johannesburg", code="JHB")
+        self.admin_user = User.objects.create_user(
+            username="admin",
+            password="test-password",
+            tenant=self.tenant,
+            branch=self.branch,
+            role=User.Role.TENANT_ADMIN,
+        )
+        other_tenant = Tenant.objects.create(name="Other Care", slug="other-care")
+        self.other_branch = Branch.objects.create(tenant=other_tenant, name="Durban", code="DBN")
+        User.objects.create_user(
+            username="external",
+            password="test-password",
+            tenant=other_tenant,
+            branch=self.other_branch,
+            role=User.Role.STAFF,
+        )
+
+    def authenticate(self):
+        response = self.client.post(
+            reverse("token_obtain_pair"),
+            {"username": "admin", "password": "test-password"},
+            format="json",
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+
+    def test_tenant_admin_lists_only_own_users(self):
+        self.authenticate()
+
+        response = self.client.get(reverse("user-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        usernames = {row["username"] for row in response.data}
+        self.assertIn("admin", usernames)
+        self.assertNotIn("external", usernames)
+
+    def test_tenant_admin_creates_staff_user_in_own_tenant(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("user-list"),
+            {
+                "username": "arranger",
+                "email": "arranger@example.com",
+                "first_name": "Funeral",
+                "last_name": "Arranger",
+                "role": User.Role.STAFF,
+                "branch": self.branch.id,
+                "password": "RestWell123!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user = User.objects.get(username="arranger")
+        self.assertEqual(user.tenant, self.tenant)
+        self.assertEqual(user.branch, self.branch)
+        self.assertTrue(user.check_password("RestWell123!"))
+
+    def test_tenant_admin_cannot_create_user_for_other_branch(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("user-list"),
+            {
+                "username": "bad-branch",
+                "role": User.Role.STAFF,
+                "branch": self.other_branch.id,
+                "password": "RestWell123!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
