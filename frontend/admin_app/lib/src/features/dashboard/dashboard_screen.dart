@@ -32,16 +32,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         'Inventory', Icons.inventory_2_outlined, '/api/inventory/items/'),
     _ModuleConfig(
         'Scheduling', Icons.event_outlined, '/api/scheduling/events/'),
-    _ModuleConfig(
-        'Mortuary', Icons.local_hospital_outlined, '/api/mortuary/records/'),
-    _ModuleConfig(
-        'Routes', Icons.map_outlined, '/api/geolocation/routes/active/'),
+    _ModuleConfig('Mortuary', Icons.local_hospital_outlined,
+        '/api/mortuary/records/', 'mortuary'),
+    _ModuleConfig('Routes', Icons.map_outlined,
+        '/api/geolocation/routes/active/', 'geolocation'),
     _ModuleConfig(
         'Branding', Icons.palette_outlined, '/api/branding/settings/'),
-    _ModuleConfig('Website', Icons.language_outlined, '/api/websites/pages/'),
-    _ModuleConfig('Apps', Icons.android_outlined, '/api/branded-apps/configs/'),
+    _ModuleConfig('Website', Icons.language_outlined, '/api/websites/pages/',
+        'website_builder'),
+    _ModuleConfig('Apps', Icons.android_outlined, '/api/branded-apps/configs/',
+        'branded_apps'),
     _ModuleConfig('Notifications', Icons.notifications_outlined,
-        '/api/notifications/messages/'),
+        '/api/notifications/messages/', 'notifications'),
     _ModuleConfig('Support', Icons.support_agent_outlined,
         '/api/client/support-requests/'),
     _ModuleConfig(
@@ -62,18 +64,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final summary = await repository.fetchDashboardSummary();
     final features = await repository.fetchFeatures();
     final results = <String, List<Map<String, dynamic>>>{};
-    for (final module in _modules.where((module) => module.path.isNotEmpty)) {
+    for (final module in _modules.where((module) =>
+        module.path.isNotEmpty && _moduleEnabledByFeatures(module, features))) {
       try {
         results[module.title] = await repository.fetchModuleRows(module.path);
       } on DioException {
         results[module.title] = const [];
       }
     }
-    try {
-      results['Website Sites'] =
-          await repository.fetchModuleRows('/api/websites/sites/');
-    } on DioException {
-      results['Website Sites'] = const [];
+    if (_moduleEnabledByFeatures(
+        const _ModuleConfig('', Icons.language_outlined, '', 'website_builder'),
+        features)) {
+      try {
+        results['Website Sites'] =
+            await repository.fetchModuleRows('/api/websites/sites/');
+      } on DioException {
+        results['Website Sites'] = const [];
+      }
     }
     return _DashboardData(
       rows: results,
@@ -695,7 +702,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authControllerProvider).state.user;
-    final selectedModule = _modules[_selectedIndex];
 
     return Scaffold(
       appBar: AppBar(
@@ -713,40 +719,45 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-      body: Row(
-        children: [
-          SizedBox(
-            width: 224,
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: _modules.length,
-              itemBuilder: (context, index) {
-                final module = _modules[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: ListTile(
-                    selected: _selectedIndex == index,
-                    selectedTileColor:
-                        Theme.of(context).colorScheme.secondaryContainer,
-                    leading: Icon(module.icon),
-                    title: Text(module.title,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    onTap: () => setState(() => _selectedIndex = index),
-                  ),
-                );
-              },
-            ),
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: FutureBuilder<_DashboardData>(
-              future: _dashboardFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final data = snapshot.data ?? _DashboardData.empty();
-                return ListView(
+      body: FutureBuilder<_DashboardData>(
+        future: _dashboardFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final data = snapshot.data ?? _DashboardData.empty();
+          final modules = _visibleModules(data);
+          final selectedIndex =
+              _selectedIndex >= modules.length ? 0 : _selectedIndex;
+          final selectedModule = modules[selectedIndex];
+
+          return Row(
+            children: [
+              SizedBox(
+                width: 224,
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: modules.length,
+                  itemBuilder: (context, index) {
+                    final module = modules[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: ListTile(
+                        selected: selectedIndex == index,
+                        selectedTileColor:
+                            Theme.of(context).colorScheme.secondaryContainer,
+                        leading: Icon(module.icon),
+                        title: Text(module.title,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        onTap: () => setState(() => _selectedIndex = index),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: ListView(
                   padding: const EdgeInsets.all(24),
                   children: [
                     _Header(
@@ -755,7 +766,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       branchName: user?.branchName,
                     ),
                     const SizedBox(height: 24),
-                    if (_selectedIndex == 0)
+                    if (selectedModule.title == 'Overview')
                       _Overview(
                         data: data,
                         onCreateTask: _createOnboardingTask,
@@ -784,11 +795,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             _createModuleRecord(selectedModule.title, data),
                       ),
                   ],
-                );
-              },
-            ),
-          ),
-        ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -950,11 +961,12 @@ class _Overview extends StatelessWidget {
               icon: const Icon(Icons.palette_outlined),
               label: const Text('Create branding'),
             ),
-            OutlinedButton.icon(
-              onPressed: onCreateWebsite,
-              icon: const Icon(Icons.language_outlined),
-              label: const Text('Create website shell'),
-            ),
+            if (data.featureEnabled('website_builder'))
+              OutlinedButton.icon(
+                onPressed: onCreateWebsite,
+                icon: const Icon(Icons.language_outlined),
+                label: const Text('Create website shell'),
+              ),
           ],
         ),
       ],
@@ -1095,6 +1107,26 @@ bool _canCreate(String moduleTitle) {
     'Onboarding',
     'Help',
   }.contains(moduleTitle);
+}
+
+List<_ModuleConfig> _visibleModules(_DashboardData data) {
+  return _DashboardScreenState._modules
+      .where((module) => _moduleEnabledByFeatures(module, data.features))
+      .toList(growable: false);
+}
+
+bool _moduleEnabledByFeatures(
+    _ModuleConfig module, List<TenantFeature> features) {
+  final featureCode = module.featureCode;
+  if (featureCode == null) {
+    return true;
+  }
+  final matchingFeatures =
+      features.where((feature) => feature.code == featureCode);
+  if (matchingFeatures.isEmpty) {
+    return true;
+  }
+  return matchingFeatures.any((feature) => feature.isEnabled);
 }
 
 int? _firstId(List<Map<String, dynamic>> rows) {
@@ -1242,12 +1274,22 @@ class _DashboardData {
   List<Map<String, dynamic>> rowsFor(String title) {
     return rows[title] ?? const [];
   }
+
+  bool featureEnabled(String featureCode) {
+    final matchingFeatures =
+        features.where((feature) => feature.code == featureCode);
+    if (matchingFeatures.isEmpty) {
+      return true;
+    }
+    return matchingFeatures.any((feature) => feature.isEnabled);
+  }
 }
 
 class _ModuleConfig {
-  const _ModuleConfig(this.title, this.icon, this.path);
+  const _ModuleConfig(this.title, this.icon, this.path, [this.featureCode]);
 
   final String title;
   final IconData icon;
   final String path;
+  final String? featureCode;
 }
