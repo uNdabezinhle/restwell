@@ -114,6 +114,55 @@ class CaseManagementApiTests(APITestCase):
         self.assertEqual(response.data["tenant"], self.tenant.id)
         self.assertEqual(response.data["created_by"], self.user.id)
 
+    def test_case_intake_creates_deceased_case_and_family_member(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("case-intake"),
+            {
+                "branch": self.branch.id,
+                "reference": "CASE-INTAKE",
+                "service_date": "2026-07-10",
+                "notes": "Family requested morning service.",
+                "deceased": {
+                    "first_name": "Nomsa",
+                    "last_name": "Dlamini",
+                    "place_of_death": "Johannesburg",
+                },
+                "family_member": {
+                    "first_name": "Sipho",
+                    "last_name": "Dlamini",
+                    "relationship": "Son",
+                    "phone": "+27110000001",
+                    "email": "sipho@example.com",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        case = Case.objects.get(reference="CASE-INTAKE")
+        self.assertEqual(case.tenant, self.tenant)
+        self.assertEqual(case.deceased.first_name, "Nomsa")
+        self.assertEqual(case.family_members.get().email, "sipho@example.com")
+        self.assertEqual(case.created_by, self.user)
+
+    def test_case_intake_rejects_cross_tenant_branch(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("case-intake"),
+            {
+                "branch": self.other_branch.id,
+                "reference": "CASE-BLOCKED-INTAKE",
+                "deceased": {"first_name": "Other", "last_name": "Person"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Case.objects.filter(reference="CASE-BLOCKED-INTAKE").exists())
+
     def test_adds_family_member_to_case(self):
         self.authenticate()
         case = self.create_case()

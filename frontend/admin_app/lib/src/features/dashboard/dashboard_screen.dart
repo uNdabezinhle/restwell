@@ -258,6 +258,163 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  Future<void> _createCaseIntake(_DashboardData data, String suffix) async {
+    final branch = _firstId(data.rowsFor('Branches'));
+    if (branch == null) {
+      _showMessage('Create a branch first.');
+      return;
+    }
+
+    final referenceController = TextEditingController(text: 'CASE-$suffix');
+    final deceasedFirstController = TextEditingController();
+    final deceasedLastController = TextEditingController();
+    final placeOfDeathController = TextEditingController();
+    final serviceDateController = TextEditingController(text: _dateOffset(7));
+    final familyFirstController = TextEditingController();
+    final familyLastController = TextEditingController();
+    final relationshipController = TextEditingController(text: 'Next of kin');
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+    final notesController = TextEditingController();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Case intake'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: referenceController,
+                    decoration: const InputDecoration(labelText: 'Reference'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: deceasedFirstController,
+                    decoration:
+                        const InputDecoration(labelText: 'Deceased first name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: deceasedLastController,
+                    decoration:
+                        const InputDecoration(labelText: 'Deceased last name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: placeOfDeathController,
+                    decoration:
+                        const InputDecoration(labelText: 'Place of death'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: serviceDateController,
+                    decoration: const InputDecoration(
+                        labelText: 'Service date', hintText: 'YYYY-MM-DD'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: familyFirstController,
+                    decoration:
+                        const InputDecoration(labelText: 'Family first name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: familyLastController,
+                    decoration:
+                        const InputDecoration(labelText: 'Family last name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: relationshipController,
+                    decoration:
+                        const InputDecoration(labelText: 'Relationship'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: phoneController,
+                    decoration: const InputDecoration(labelText: 'Phone'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailController,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: notesController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: 'Notes'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (referenceController.text.trim().isEmpty ||
+                    deceasedFirstController.text.trim().isEmpty ||
+                    deceasedLastController.text.trim().isEmpty) {
+                  return;
+                }
+                Navigator.pop(context, {
+                  'branch': branch,
+                  'reference': referenceController.text.trim(),
+                  'service_date': serviceDateController.text.trim(),
+                  'notes': notesController.text.trim(),
+                  'deceased': {
+                    'first_name': deceasedFirstController.text.trim(),
+                    'last_name': deceasedLastController.text.trim(),
+                    'place_of_death': placeOfDeathController.text.trim(),
+                  },
+                  'family_member': {
+                    'first_name': familyFirstController.text.trim(),
+                    'last_name': familyLastController.text.trim(),
+                    'relationship': relationshipController.text.trim(),
+                    'phone': phoneController.text.trim(),
+                    'email': emailController.text.trim(),
+                    'is_next_of_kin': true,
+                  },
+                });
+              },
+              child: const Text('Create case'),
+            ),
+          ],
+        );
+      },
+    );
+
+    referenceController.dispose();
+    deceasedFirstController.dispose();
+    deceasedLastController.dispose();
+    placeOfDeathController.dispose();
+    serviceDateController.dispose();
+    familyFirstController.dispose();
+    familyLastController.dispose();
+    relationshipController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
+    notesController.dispose();
+
+    if (result == null) {
+      return;
+    }
+    await _runAction(
+      () => ref
+          .read(adminRepositoryProvider)
+          .runWorkflow('/api/cases/intake/', result),
+      'Case intake completed.',
+    );
+  }
+
   Future<void> _createModuleRecord(
       String moduleTitle, _DashboardData data) async {
     final repository = ref.read(adminRepositoryProvider);
@@ -346,27 +503,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         );
         return;
       case 'Cases':
-        if (branch == null) {
-          _showMessage('Create a branch first.');
-          return;
-        }
-        final deceasedId = deceased ??
-            (await create('/api/cases/deceased/', {
-              'branch': branch,
-              'first_name': 'Demo',
-              'last_name': 'Case $suffix',
-            }))['id'] as int;
-        await _runAction(
-          () => create('/api/cases/', {
-            'branch': branch,
-            'deceased': deceasedId,
-            'reference': 'CASE-$suffix',
-            'status': 'new',
-            'service_date': _dateOffset(7),
-            'notes': 'Created from admin workspace.',
-          }),
-          'Case created.',
-        );
+        await _createCaseIntake(data, suffix);
         return;
       case 'Policies':
         final underwriter = await create('/api/policies/underwriters/', {

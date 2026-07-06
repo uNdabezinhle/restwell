@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -6,6 +7,7 @@ from rest_framework.viewsets import ModelViewSet
 from accounts.permissions import IsTenantOperationsUser
 from platform_core.models import AuditLog
 from platform_core.services import write_audit_log
+from tenants.models import Branch
 from .models import Case, CaseDocument, Deceased, FamilyMember
 from .serializers import CaseDocumentSerializer, CaseSerializer, DeceasedSerializer, FamilyMemberSerializer
 
@@ -76,6 +78,70 @@ class CaseViewSet(TenantScopedViewSet):
             metadata={"status": next_status},
         )
         return Response(self.get_serializer(case).data)
+
+    @action(detail=False, methods=["post"], url_path="intake")
+    def intake(self, request):
+        tenant = self.get_tenant()
+        branch_id = request.data.get("branch")
+        reference = request.data.get("reference")
+        deceased_data = request.data.get("deceased") or {}
+        family_data = request.data.get("family_member") or {}
+
+        if not branch_id:
+            raise ValidationError({"branch": "Branch is required."})
+        if not reference:
+            raise ValidationError({"reference": "Case reference is required."})
+        if not deceased_data.get("first_name") or not deceased_data.get("last_name"):
+            raise ValidationError({"deceased": "Deceased first and last name are required."})
+        status = request.data.get("status") or Case.Status.NEW
+        if status not in {choice[0] for choice in Case.Status.choices}:
+            raise ValidationError({"status": "Choose a valid case status."})
+
+        try:
+            branch = tenant.branches.get(id=branch_id)
+        except Branch.DoesNotExist:
+            raise ValidationError({"branch": "Branch must belong to the current tenant."})
+
+        with transaction.atomic():
+            deceased = Deceased.objects.create(
+                tenant=tenant,
+                branch=branch,
+                first_name=deceased_data["first_name"],
+                last_name=deceased_data["last_name"],
+                id_number=deceased_data.get("id_number", ""),
+                date_of_birth=deceased_data.get("date_of_birth") or None,
+                date_of_death=deceased_data.get("date_of_death") or None,
+                place_of_death=deceased_data.get("place_of_death", ""),
+            )
+            case = Case.objects.create(
+                tenant=tenant,
+                branch=branch,
+                deceased=deceased,
+                reference=reference,
+                status=status,
+                service_date=request.data.get("service_date") or None,
+                notes=request.data.get("notes", ""),
+                created_by=request.user,
+            )
+            if family_data.get("first_name") and family_data.get("last_name"):
+                FamilyMember.objects.create(
+                    tenant=tenant,
+                    case=case,
+                    first_name=family_data["first_name"],
+                    last_name=family_data["last_name"],
+                    relationship=family_data.get("relationship", "Family"),
+                    phone=family_data.get("phone", ""),
+                    email=family_data.get("email", ""),
+                    is_next_of_kin=family_data.get("is_next_of_kin", True),
+                )
+            write_audit_log(
+                action=AuditLog.Action.WORKFLOW,
+                resource=case,
+                actor=request.user,
+                description=f"Case intake completed for {case.reference}.",
+                metadata={"deceased": deceased.id, "branch": branch.id},
+            )
+        return Response(self.get_serializer(case).data, status=201)
 
 
 class FamilyMemberViewSet(TenantScopedViewSet):
