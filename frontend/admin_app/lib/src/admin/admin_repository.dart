@@ -22,15 +22,18 @@ class DashboardSummary {
 
 class TenantFeature {
   const TenantFeature({
+    required this.id,
     required this.code,
     required this.isEnabled,
   });
 
+  final int id;
   final String code;
   final bool isEnabled;
 
   factory TenantFeature.fromJson(Map<String, dynamic> json) {
     return TenantFeature(
+      id: (json['id'] as int?) ?? 0,
       code: (json['code'] as String?) ?? '',
       isEnabled: (json['is_enabled'] as bool?) ?? true,
     );
@@ -56,11 +59,20 @@ class AdminRepository {
     return _apiClient.fetchList(path);
   }
 
-  Future<Map<String, dynamic>> createRecord(String path, Map<String, dynamic> data) {
+  Future<Map<String, dynamic>> createRecord(
+      String path, Map<String, dynamic> data) {
     return _apiClient.create(path, data);
   }
 
-  Future<Map<String, dynamic>> runWorkflow(String path, [Map<String, dynamic>? data]) {
+  Future<Map<String, dynamic>> runWorkflow(String path,
+      [Map<String, dynamic>? data]) {
     return _apiClient.post(path, data);
+  }
+
+  Future<TenantFeature> updateFeature(int id, bool isEnabled) async {
+    final json = await _apiClient.patch('/api/features/$id/', {
+      'is_enabled': isEnabled,
+    });
+    return TenantFeature.fromJson(json);
   }
 }

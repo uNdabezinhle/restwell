@@ -107,4 +107,10 @@ class RestWellApiClient {
         await _dio.post<Map<String, dynamic>>(path, data: data ?? const {});
     return response.data!;
   }
+
+  Future<Map<String, dynamic>> patch(
+      String path, Map<String, dynamic> data) async {
+    final response = await _dio.patch<Map<String, dynamic>>(path, data: data);
+    return response.data!;
+  }
 }

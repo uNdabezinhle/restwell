@@ -54,6 +54,24 @@ class PlatformCoreApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_tenant_admin_updates_feature_state(self):
+        feature = TenantFeature.objects.create(
+            tenant=self.tenant,
+            code=TenantFeature.Code.WEBSITE_BUILDER,
+            is_enabled=True,
+        )
+        self.authenticate()
+
+        response = self.client.patch(
+            reverse("tenant-feature-detail", args=[feature.id]),
+            {"is_enabled": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        feature.refresh_from_db()
+        self.assertFalse(feature.is_enabled)
+
     def test_advance_case_status_writes_audit_log(self):
         self.authenticate()
 

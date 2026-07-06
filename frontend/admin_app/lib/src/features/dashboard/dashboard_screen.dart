@@ -231,6 +231,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  Future<void> _toggleFeature(TenantFeature feature, bool isEnabled) async {
+    if (feature.id == 0) {
+      _showMessage('This feature cannot be changed from the workspace.');
+      return;
+    }
+    await _runAction(
+      () async {
+        final updated = await ref
+            .read(adminRepositoryProvider)
+            .updateFeature(feature.id, isEnabled);
+        return {
+          'id': updated.id,
+          'code': updated.code,
+          'is_enabled': updated.isEnabled,
+        };
+      },
+      isEnabled ? 'Feature enabled.' : 'Feature disabled.',
+    );
+  }
+
   Future<void> _createModuleRecord(
       String moduleTitle, _DashboardData data) async {
     final repository = ref.read(adminRepositoryProvider);
@@ -773,6 +793,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         onSeedTasks: _seedOnboardingTasks,
                         onCreateBranding: _createBranding,
                         onCreateWebsite: _createWebsiteShell,
+                        onToggleFeature: _toggleFeature,
                       )
                     else
                       _ModuleView(
@@ -840,6 +861,7 @@ class _Overview extends StatelessWidget {
     required this.onSeedTasks,
     required this.onCreateBranding,
     required this.onCreateWebsite,
+    required this.onToggleFeature,
   });
 
   final _DashboardData data;
@@ -847,6 +869,8 @@ class _Overview extends StatelessWidget {
   final VoidCallback onSeedTasks;
   final VoidCallback onCreateBranding;
   final VoidCallback onCreateWebsite;
+  final Future<void> Function(TenantFeature feature, bool isEnabled)
+      onToggleFeature;
 
   @override
   Widget build(BuildContext context) {
@@ -929,13 +953,19 @@ class _Overview extends StatelessWidget {
           runSpacing: 8,
           children: [
             for (final feature in data.features)
-              Chip(
-                avatar: Icon(
-                  feature.isEnabled ? Icons.check_circle : Icons.block,
-                  color: feature.isEnabled ? Colors.green : Colors.red,
-                  size: 18,
+              SizedBox(
+                width: 260,
+                child: SwitchListTile(
+                  value: feature.isEnabled,
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  secondary: Icon(
+                    feature.isEnabled ? Icons.check_circle : Icons.block,
+                    color: feature.isEnabled ? Colors.green : Colors.red,
+                  ),
+                  title: Text(feature.code.replaceAll('_', ' ')),
+                  onChanged: (value) => onToggleFeature(feature, value),
                 ),
-                label: Text(feature.code.replaceAll('_', ' ')),
               ),
           ],
         ),
