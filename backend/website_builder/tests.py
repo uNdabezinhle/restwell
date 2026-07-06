@@ -77,6 +77,8 @@ class WebsiteBuilderApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["tenant"], self.tenant.id)
         self.assertEqual(response.data["content"]["headline"], "RestWell Demo")
+        self.assertEqual(response.data["public_json_url"], "http://testserver/api/websites/public/restwell-demo/home/")
+        self.assertEqual(response.data["public_html_url"], "http://testserver/api/websites/render/restwell-demo/home/")
 
     def test_rejects_cross_tenant_site_on_page(self):
         self.authenticate()
@@ -172,6 +174,23 @@ class WebsiteBuilderApiTests(APITestCase):
         self.assertIn("Dignified &lt;care&gt;", html)
         self.assertIn("Call us", html)
         self.assertIn("Powered by RestWell", html)
+
+    def test_publish_response_includes_public_links(self):
+        self.authenticate()
+        site = self.create_site()
+        page = WebsitePage.objects.create(
+            tenant=self.tenant,
+            site=site,
+            slug="memorial",
+            title="Memorial",
+            is_published=False,
+        )
+
+        response = self.client.post(reverse("website-page-publish", args=[page.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["public_json_url"], "http://testserver/api/websites/public/restwell-demo/memorial/")
+        self.assertEqual(response.data["public_html_url"], "http://testserver/api/websites/render/restwell-demo/memorial/")
 
     def test_creates_website_block_for_current_tenant_page(self):
         self.authenticate()

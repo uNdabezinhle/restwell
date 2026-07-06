@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../admin/admin_repository.dart';
 import '../../auth/providers.dart';
@@ -1119,16 +1120,19 @@ class _ModuleView extends StatelessWidget {
                     maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(_rowSubtitle(row),
                     maxLines: 2, overflow: TextOverflow.ellipsis),
-                trailing: _rowTrailing(row),
+                trailing: _rowTrailing(context, row),
               ),
             ),
       ],
     );
   }
 
-  Widget? _rowTrailing(Map<String, dynamic> row) {
+  Widget? _rowTrailing(BuildContext context, Map<String, dynamic> row) {
     final workflowLabel = _workflowLabel(module.title, row);
-    if (onCompleteTask == null && workflowLabel == null) {
+    final publicUrl = module.title == 'Website'
+        ? (row['public_html_url'] as String? ?? '')
+        : '';
+    if (onCompleteTask == null && workflowLabel == null && publicUrl.isEmpty) {
       return null;
     }
     return Row(
@@ -1139,6 +1143,18 @@ class _ModuleView extends StatelessWidget {
           TextButton(
             onPressed: () => onRunWorkflow(module.title, row),
             child: Text(workflowLabel),
+          ),
+        if (publicUrl.isNotEmpty)
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: publicUrl));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Public page link copied.')),
+                );
+              }
+            },
+            child: const Text('Copy link'),
           ),
       ],
     );
@@ -1319,6 +1335,7 @@ String _rowSubtitle(Map<String, dynamic> row) {
     'storage_unit',
     'package_name',
     'page_type',
+    'public_html_url',
     'email_from_name',
     'created_at',
     'updated_at',
