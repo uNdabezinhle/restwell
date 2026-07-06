@@ -26,13 +26,20 @@ class PlatformCoreApiTests(APITestCase):
             branch=self.branch,
             role=User.Role.TENANT_ADMIN,
         )
+        self.staff_user = User.objects.create_user(
+            username="platform-staff",
+            password="test-password",
+            tenant=self.tenant,
+            branch=self.branch,
+            role=User.Role.STAFF,
+        )
         self.deceased = Deceased.objects.create(tenant=self.tenant, branch=self.branch, first_name="Thabo", last_name="Mokoena")
         self.case = Case.objects.create(tenant=self.tenant, branch=self.branch, deceased=self.deceased, reference="CASE-001", created_by=self.user)
 
-    def authenticate(self):
+    def authenticate(self, username="platform-admin"):
         response = self.client.post(
             reverse("token_obtain_pair"),
-            {"username": "platform-admin", "password": "test-password"},
+            {"username": username, "password": "test-password"},
             format="json",
         )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
@@ -45,6 +52,32 @@ class PlatformCoreApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["operations"]["cases"], 1)
         self.assertEqual(response.data["operations"]["deceased"], 1)
+
+    def test_staff_user_reads_dashboard_summary(self):
+        self.authenticate("platform-staff")
+
+        response = self.client.get(reverse("dashboard-summary"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["operations"]["cases"], 1)
+
+    def test_staff_user_reads_features_but_cannot_update_them(self):
+        feature = TenantFeature.objects.create(
+            tenant=self.tenant,
+            code=TenantFeature.Code.NOTIFICATIONS,
+            is_enabled=True,
+        )
+        self.authenticate("platform-staff")
+
+        list_response = self.client.get(reverse("tenant-feature-list"))
+        patch_response = self.client.patch(
+            reverse("tenant-feature-detail", args=[feature.id]),
+            {"is_enabled": False},
+            format="json",
+        )
+
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_disabled_feature_denies_paid_module(self):
         TenantFeature.objects.create(tenant=self.tenant, code=TenantFeature.Code.MORTUARY, is_enabled=False)

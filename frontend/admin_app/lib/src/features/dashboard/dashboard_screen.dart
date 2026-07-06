@@ -18,9 +18,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   static const _modules = [
     _ModuleConfig('Overview', Icons.dashboard_outlined, ''),
+    _ModuleConfig('Branches', Icons.account_tree_outlined,
+        '/api/tenants/branches/', null, true),
     _ModuleConfig(
-        'Branches', Icons.account_tree_outlined, '/api/tenants/branches/'),
-    _ModuleConfig('Users', Icons.people_outline, '/api/accounts/users/'),
+        'Users', Icons.people_outline, '/api/accounts/users/', null, true),
     _ModuleConfig('Cases', Icons.assignment_outlined, '/api/cases/'),
     _ModuleConfig('Deceased', Icons.person_outline, '/api/cases/deceased/'),
     _ModuleConfig(
@@ -37,21 +38,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         '/api/mortuary/records/', 'mortuary'),
     _ModuleConfig('Routes', Icons.map_outlined,
         '/api/geolocation/routes/active/', 'geolocation'),
-    _ModuleConfig(
-        'Branding', Icons.palette_outlined, '/api/branding/settings/'),
+    _ModuleConfig('Branding', Icons.palette_outlined, '/api/branding/settings/',
+        null, true),
     _ModuleConfig('Website', Icons.language_outlined, '/api/websites/pages/',
-        'website_builder'),
+        'website_builder', true),
     _ModuleConfig('Apps', Icons.android_outlined, '/api/branded-apps/configs/',
-        'branded_apps'),
+        'branded_apps', true),
     _ModuleConfig('Notifications', Icons.notifications_outlined,
-        '/api/notifications/messages/', 'notifications'),
+        '/api/notifications/messages/', 'notifications', true),
     _ModuleConfig('Support', Icons.support_agent_outlined,
-        '/api/client/support-requests/'),
-    _ModuleConfig(
-        'Onboarding', Icons.school_outlined, '/api/onboarding/tasks/'),
-    _ModuleConfig(
-        'Help', Icons.help_outline, '/api/onboarding/published-articles/'),
-    _ModuleConfig('Audit Logs', Icons.history, '/api/audit-logs/'),
+        '/api/client/support-requests/', null, true),
+    _ModuleConfig('Onboarding', Icons.school_outlined, '/api/onboarding/tasks/',
+        null, true),
+    _ModuleConfig('Help', Icons.help_outline,
+        '/api/onboarding/published-articles/', null, true),
+    _ModuleConfig('Audit Logs', Icons.history, '/api/audit-logs/', null, true),
   ];
 
   @override
@@ -65,17 +66,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final summary = await repository.fetchDashboardSummary();
     final features = await repository.fetchFeatures();
     final results = <String, List<Map<String, dynamic>>>{};
+    final user = ref.read(authControllerProvider).state.user;
     for (final module in _modules.where((module) =>
-        module.path.isNotEmpty && _moduleEnabledByFeatures(module, features))) {
+        module.path.isNotEmpty &&
+        _moduleEnabledForUser(module, features, user?.role))) {
       try {
         results[module.title] = await repository.fetchModuleRows(module.path);
       } on DioException {
         results[module.title] = const [];
       }
     }
-    if (_moduleEnabledByFeatures(
-        const _ModuleConfig('', Icons.language_outlined, '', 'website_builder'),
-        features)) {
+    if (_moduleEnabledForUser(
+        const _ModuleConfig(
+            '', Icons.language_outlined, '', 'website_builder', true),
+        features,
+        user?.role)) {
       try {
         results['Website Sites'] =
             await repository.fetchModuleRows('/api/websites/sites/');
@@ -766,7 +771,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final data = snapshot.data ?? _DashboardData.empty();
-          final modules = _visibleModules(data);
+          final modules = _visibleModules(data, user?.role);
           final selectedIndex =
               _selectedIndex >= modules.length ? 0 : _selectedIndex;
           final selectedModule = modules[selectedIndex];
@@ -814,6 +819,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         onCreateBranding: _createBranding,
                         onCreateWebsite: _createWebsiteShell,
                         onToggleFeature: _toggleFeature,
+                        isTenantAdmin: _isTenantAdminRole(user?.role),
                       )
                     else
                       _ModuleView(
@@ -882,6 +888,7 @@ class _Overview extends StatelessWidget {
     required this.onCreateBranding,
     required this.onCreateWebsite,
     required this.onToggleFeature,
+    required this.isTenantAdmin,
   });
 
   final _DashboardData data;
@@ -891,6 +898,7 @@ class _Overview extends StatelessWidget {
   final VoidCallback onCreateWebsite;
   final Future<void> Function(TenantFeature feature, bool isEnabled)
       onToggleFeature;
+  final bool isTenantAdmin;
 
   @override
   Widget build(BuildContext context) {
@@ -975,17 +983,29 @@ class _Overview extends StatelessWidget {
             for (final feature in data.features)
               SizedBox(
                 width: 260,
-                child: SwitchListTile(
-                  value: feature.isEnabled,
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                  secondary: Icon(
-                    feature.isEnabled ? Icons.check_circle : Icons.block,
-                    color: feature.isEnabled ? Colors.green : Colors.red,
-                  ),
-                  title: Text(feature.code.replaceAll('_', ' ')),
-                  onChanged: (value) => onToggleFeature(feature, value),
-                ),
+                child: isTenantAdmin
+                    ? SwitchListTile(
+                        value: feature.isEnabled,
+                        dense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 12),
+                        secondary: Icon(
+                          feature.isEnabled ? Icons.check_circle : Icons.block,
+                          color: feature.isEnabled ? Colors.green : Colors.red,
+                        ),
+                        title: Text(feature.code.replaceAll('_', ' ')),
+                        onChanged: (value) => onToggleFeature(feature, value),
+                      )
+                    : ListTile(
+                        dense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 12),
+                        leading: Icon(
+                          feature.isEnabled ? Icons.check_circle : Icons.block,
+                          color: feature.isEnabled ? Colors.green : Colors.red,
+                        ),
+                        title: Text(feature.code.replaceAll('_', ' ')),
+                      ),
               ),
           ],
         ),
@@ -996,22 +1016,25 @@ class _Overview extends StatelessWidget {
           spacing: 12,
           runSpacing: 12,
           children: [
-            FilledButton.icon(
-              onPressed: onCreateTask,
-              icon: const Icon(Icons.add_task),
-              label: const Text('Add onboarding task'),
-            ),
-            OutlinedButton.icon(
-              onPressed: onSeedTasks,
-              icon: const Icon(Icons.playlist_add_check),
-              label: const Text('Seed checklist'),
-            ),
-            OutlinedButton.icon(
-              onPressed: onCreateBranding,
-              icon: const Icon(Icons.palette_outlined),
-              label: const Text('Create branding'),
-            ),
-            if (data.featureEnabled('website_builder'))
+            if (isTenantAdmin)
+              FilledButton.icon(
+                onPressed: onCreateTask,
+                icon: const Icon(Icons.add_task),
+                label: const Text('Add onboarding task'),
+              ),
+            if (isTenantAdmin)
+              OutlinedButton.icon(
+                onPressed: onSeedTasks,
+                icon: const Icon(Icons.playlist_add_check),
+                label: const Text('Seed checklist'),
+              ),
+            if (isTenantAdmin)
+              OutlinedButton.icon(
+                onPressed: onCreateBranding,
+                icon: const Icon(Icons.palette_outlined),
+                label: const Text('Create branding'),
+              ),
+            if (isTenantAdmin && data.featureEnabled('website_builder'))
               OutlinedButton.icon(
                 onPressed: onCreateWebsite,
                 icon: const Icon(Icons.language_outlined),
@@ -1160,10 +1183,22 @@ bool _canCreate(String moduleTitle) {
   }.contains(moduleTitle);
 }
 
-List<_ModuleConfig> _visibleModules(_DashboardData data) {
+List<_ModuleConfig> _visibleModules(_DashboardData data, String? role) {
   return _DashboardScreenState._modules
-      .where((module) => _moduleEnabledByFeatures(module, data.features))
+      .where((module) => _moduleEnabledForUser(module, data.features, role))
       .toList(growable: false);
+}
+
+bool _moduleEnabledForUser(
+    _ModuleConfig module, List<TenantFeature> features, String? role) {
+  if (module.adminOnly && !_isTenantAdminRole(role)) {
+    return false;
+  }
+  return _moduleEnabledByFeatures(module, features);
+}
+
+bool _isTenantAdminRole(String? role) {
+  return role == 'tenant_admin' || role == 'super_admin';
 }
 
 bool _moduleEnabledByFeatures(
@@ -1337,10 +1372,12 @@ class _DashboardData {
 }
 
 class _ModuleConfig {
-  const _ModuleConfig(this.title, this.icon, this.path, [this.featureCode]);
+  const _ModuleConfig(this.title, this.icon, this.path,
+      [this.featureCode, this.adminOnly = false]);
 
   final String title;
   final IconData icon;
   final String path;
   final String? featureCode;
+  final bool adminOnly;
 }

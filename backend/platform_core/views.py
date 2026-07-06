@@ -4,7 +4,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
-from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from accounts.permissions import IsTenantAdminOrPlatformAdmin, IsTenantOperationsUser
 from branded_apps.models import AppBuildRequest, TenantAppConfig
 from branding.models import TenantBranding
 from cases.models import Case, Deceased, FamilyMember
@@ -42,6 +42,11 @@ class TenantFeatureViewSet(TenantScopedPlatformViewSet):
     queryset = TenantFeature.objects.select_related("tenant")
     serializer_class = TenantFeatureSerializer
 
+    def get_permissions(self):
+        if self.action in {"list", "retrieve"}:
+            return [IsTenantOperationsUser()]
+        return [IsTenantAdminOrPlatformAdmin()]
+
     def perform_create(self, serializer):
         tenant = serializer.validated_data.get("tenant") if self.request.user.is_platform_admin else self.current_tenant()
         serializer.save(tenant=tenant)
@@ -77,7 +82,7 @@ class DataSubjectRequestViewSet(TenantScopedPlatformViewSet):
 
 
 @api_view(["GET"])
-@permission_classes([IsTenantAdminOrPlatformAdmin])
+@permission_classes([IsTenantOperationsUser])
 def dashboard_summary(request):
     tenant_id = None if request.user.is_platform_admin else request.user.tenant_id
 
