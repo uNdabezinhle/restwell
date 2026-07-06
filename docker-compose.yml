@@ -46,6 +46,23 @@ services:
     depends_on:
       - api
 
+  client_frontend:
+    image: ghcr.io/cirruslabs/flutter:3.22.3
+    working_dir: /app
+    command: >
+      sh -lc "flutter pub get &&
+      flutter run -d web-server
+      --web-hostname 0.0.0.0
+      --web-port 8080
+      --dart-define=RESTWELL_API_BASE_URL=http://localhost:8001"
+    volumes:
+      - ./frontend/client_app:/app
+      - flutter_pub_cache:/root/.pub-cache
+    ports:
+      - "4202:8080"
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
   flutter_pub_cache:

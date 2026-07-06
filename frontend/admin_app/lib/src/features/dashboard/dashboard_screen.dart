@@ -23,6 +23,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _ModuleConfig('Cases', Icons.assignment_outlined, '/api/cases/'),
     _ModuleConfig('Deceased', Icons.person_outline, '/api/cases/deceased/'),
     _ModuleConfig(
+        'Family Members', Icons.groups_outlined, '/api/cases/family-members/'),
+    _ModuleConfig(
         'Policies', Icons.verified_user_outlined, '/api/policies/templates/'),
     _ModuleConfig(
         'Financials', Icons.payments_outlined, '/api/financials/invoices/'),
@@ -38,12 +40,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         'Branding', Icons.palette_outlined, '/api/branding/settings/'),
     _ModuleConfig('Website', Icons.language_outlined, '/api/websites/pages/'),
     _ModuleConfig('Apps', Icons.android_outlined, '/api/branded-apps/configs/'),
-    _ModuleConfig(
-        'Notifications', Icons.notifications_outlined, '/api/notifications/messages/'),
+    _ModuleConfig('Notifications', Icons.notifications_outlined,
+        '/api/notifications/messages/'),
     _ModuleConfig(
         'Onboarding', Icons.school_outlined, '/api/onboarding/tasks/'),
     _ModuleConfig(
         'Help', Icons.help_outline, '/api/onboarding/published-articles/'),
+    _ModuleConfig('Audit Logs', Icons.history, '/api/audit-logs/'),
   ];
 
   @override
@@ -63,6 +66,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       } on DioException {
         results[module.title] = const [];
       }
+    }
+    try {
+      results['Website Sites'] =
+          await repository.fetchModuleRows('/api/websites/sites/');
+    } on DioException {
+      results['Website Sites'] = const [];
     }
     return _DashboardData(
       rows: results,
@@ -132,7 +141,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     await _runAction(
-      () => ref.read(adminRepositoryProvider).createRecord('/api/onboarding/tasks/', {
+      () => ref
+          .read(adminRepositoryProvider)
+          .createRecord('/api/onboarding/tasks/', {
         'title': result['title'],
         'description': result['description'],
         'category': 'platform_setup',
@@ -184,7 +195,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _createBranding() async {
     await _runAction(
-      () => ref.read(adminRepositoryProvider).createRecord('/api/branding/settings/', {
+      () => ref
+          .read(adminRepositoryProvider)
+          .createRecord('/api/branding/settings/', {
         'primary_color': '#0F766E',
         'secondary_color': '#2563EB',
         'email_from_name': 'RestWell Demo',
@@ -198,12 +211,347 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _createWebsiteShell() async {
     await _runAction(
-      () => ref.read(adminRepositoryProvider).createRecord('/api/websites/sites/', {
+      () => ref
+          .read(adminRepositoryProvider)
+          .createRecord('/api/websites/sites/', {
         'name': 'RestWell Demo',
         'subdomain': 'restwell-demo',
         'is_published': true,
       }),
       'Website shell created.',
+    );
+  }
+
+  Future<void> _createModuleRecord(
+      String moduleTitle, _DashboardData data) async {
+    final repository = ref.read(adminRepositoryProvider);
+    final user = ref.read(authControllerProvider).state.user;
+    final tenant = user?.tenant;
+    final branch = _firstId(data.rowsFor('Branches'));
+    final caseId = _firstId(data.rowsFor('Cases'));
+    final deceased = _firstId(data.rowsFor('Deceased'));
+    final familyMember = _firstId(data.rowsFor('Family Members'));
+    final suffix =
+        DateTime.now().millisecondsSinceEpoch.toString().substring(8);
+
+    Future<Map<String, dynamic>> create(
+        String path, Map<String, dynamic> payload) {
+      return repository.createRecord(path, payload);
+    }
+
+    switch (moduleTitle) {
+      case 'Branches':
+        if (tenant == null) {
+          _showMessage('Tenant context is required.');
+          return;
+        }
+        await _runAction(
+          () => create('/api/tenants/branches/', {
+            'tenant': tenant,
+            'name': 'Demo Branch $suffix',
+            'code': 'BR$suffix',
+            'province': 'Gauteng',
+            'city': 'Johannesburg',
+            'is_active': true,
+          }),
+          'Branch created.',
+        );
+        return;
+      case 'Family Members':
+        if (caseId == null) {
+          _showMessage('Create a case first.');
+          return;
+        }
+        await _runAction(
+          () => create('/api/cases/family-members/', {
+            'case': caseId,
+            'first_name': 'Family',
+            'last_name': 'Contact $suffix',
+            'relationship': 'Next of kin',
+            'phone': '+2711000$suffix',
+            'email': 'family$suffix@example.com',
+            'is_next_of_kin': true,
+          }),
+          'Family member created.',
+        );
+        return;
+      case 'Deceased':
+        if (branch == null) {
+          _showMessage('Create a branch first.');
+          return;
+        }
+        await _runAction(
+          () => create('/api/cases/deceased/', {
+            'branch': branch,
+            'first_name': 'Demo',
+            'last_name': 'Person $suffix',
+            'place_of_death': 'Johannesburg',
+          }),
+          'Deceased record created.',
+        );
+        return;
+      case 'Cases':
+        if (branch == null) {
+          _showMessage('Create a branch first.');
+          return;
+        }
+        final deceasedId = deceased ??
+            (await create('/api/cases/deceased/', {
+              'branch': branch,
+              'first_name': 'Demo',
+              'last_name': 'Case $suffix',
+            }))['id'] as int;
+        await _runAction(
+          () => create('/api/cases/', {
+            'branch': branch,
+            'deceased': deceasedId,
+            'reference': 'CASE-$suffix',
+            'status': 'new',
+            'service_date': _dateOffset(7),
+            'notes': 'Created from admin workspace.',
+          }),
+          'Case created.',
+        );
+        return;
+      case 'Policies':
+        final underwriter = await create('/api/policies/underwriters/', {
+          'name': 'Demo Underwriter $suffix',
+          'registration_number': 'UW-$suffix',
+          'is_active': true,
+        });
+        final template = await create('/api/policies/templates/', {
+          'underwriter': underwriter['id'],
+          'name': 'Demo Cover $suffix',
+          'cover_amount': '25000.00',
+          'premium_amount': '150.00',
+          'billing_frequency': 'monthly',
+          'is_active': true,
+        });
+        if (familyMember == null) {
+          _showMessage(
+              'Policy template created. Add a family member to enroll a policy.');
+          _refresh();
+          return;
+        }
+        await _runAction(
+          () => create('/api/policies/enrollments/', {
+            'policy_template': template['id'],
+            'family_member': familyMember,
+            'policy_number': 'POL-$suffix',
+            'status': 'active',
+            'start_date': _dateOffset(0),
+          }),
+          'Policy template and enrollment created.',
+        );
+        return;
+      case 'Financials':
+        if (branch == null) {
+          _showMessage('Create a branch first.');
+          return;
+        }
+        final invoice = await create('/api/financials/invoices/', {
+          'branch': branch,
+          'case': caseId,
+          'invoice_number': 'INV-$suffix',
+          'customer_name': 'Demo Customer',
+          'customer_email': 'family@example.com',
+          'issue_date': _dateOffset(0),
+          'due_date': _dateOffset(7),
+          'status': 'issued',
+        });
+        await _runAction(
+          () => create('/api/financials/line-items/', {
+            'invoice': invoice['id'],
+            'description': 'Demo funeral service',
+            'quantity': '1.00',
+            'unit_price': '8500.00',
+          }),
+          'Invoice created.',
+        );
+        return;
+      case 'Inventory':
+        if (branch == null) {
+          _showMessage('Create a branch first.');
+          return;
+        }
+        await _runAction(
+          () => create('/api/inventory/items/', {
+            'branch': branch,
+            'name': 'Demo Item $suffix',
+            'sku': 'SKU-$suffix',
+            'category': 'General',
+            'reorder_level': '2.00',
+            'unit_cost': '100.00',
+            'is_active': true,
+          }),
+          'Inventory item created.',
+        );
+        return;
+      case 'Scheduling':
+        if (branch == null) {
+          _showMessage('Create a branch first.');
+          return;
+        }
+        final resource = await create('/api/scheduling/resources/', {
+          'branch': branch,
+          'name': 'Demo Vehicle $suffix',
+          'resource_type': 'vehicle',
+          'is_active': true,
+        });
+        await _runAction(
+          () => create('/api/scheduling/events/', {
+            'branch': branch,
+            'case': caseId,
+            'title': 'Demo Service $suffix',
+            'event_type': 'funeral_service',
+            'starts_at': _dateTimeOffset(2),
+            'ends_at': _dateTimeOffset(2, hours: 2),
+            'location': 'Johannesburg Chapel',
+            'resources': [resource['id']],
+          }),
+          'Calendar event created.',
+        );
+        return;
+      case 'Mortuary':
+        if (branch == null || deceased == null) {
+          _showMessage('Create a branch and deceased record first.');
+          return;
+        }
+        await _runAction(
+          () => create('/api/mortuary/records/', {
+            'branch': branch,
+            'case': caseId,
+            'deceased': deceased,
+            'intake_reference': 'MOR-$suffix',
+            'storage_location': 'Cold Room A',
+            'storage_unit': 'A-$suffix',
+            'intake_at': _dateTimeOffset(0),
+          }),
+          'Mortuary intake created.',
+        );
+        return;
+      case 'Routes':
+        if (branch == null) {
+          _showMessage('Create a branch first.');
+          return;
+        }
+        await _runAction(
+          () => create('/api/geolocation/routes/', {
+            'branch': branch,
+            'case': caseId,
+            'name': 'Demo Route $suffix',
+            'status': 'active',
+            'origin': 'Hospital',
+            'destination': 'RestWell',
+          }),
+          'Route created.',
+        );
+        return;
+      case 'Website':
+        await _createWebsitePage(data, suffix);
+        return;
+      case 'Apps':
+        await _runAction(
+          () => create('/api/branded-apps/configs/', {
+            'app_name': 'RestWell Demo',
+            'package_name': 'za.co.restwell.demo$suffix',
+            'primary_color': '#0F766E',
+            'secondary_color': '#2563EB',
+            'support_email': 'support@restwell.local',
+            'privacy_policy_url': 'https://example.com/privacy',
+            'version_name': '1.0.0',
+            'version_code': 1,
+            'is_active': true,
+          }),
+          'Android app config created.',
+        );
+        return;
+      case 'Notifications':
+        if (user == null) {
+          _showMessage('User context is required.');
+          return;
+        }
+        await _runAction(
+          () => create('/api/notifications/messages/', {
+            'recipient_user': user.id,
+            'channel': 'in_app',
+            'subject': 'Demo notification $suffix',
+            'body': 'This is a local demo notification.',
+          }),
+          'Notification created.',
+        );
+        return;
+      case 'Onboarding':
+        await _createOnboardingTask();
+        return;
+      case 'Help':
+        await _runAction(
+          () => create('/api/onboarding/articles/', {
+            'slug': 'demo-help-$suffix',
+            'title': 'Demo Help $suffix',
+            'summary': 'Quick local help article.',
+            'body':
+                'Use this article to guide staff through the demo workflow.',
+            'category': 'getting-started',
+            'audience': 'all',
+            'is_published': true,
+          }),
+          'Help article created.',
+        );
+        return;
+    }
+  }
+
+  Future<void> _createWebsitePage(_DashboardData data, String suffix) async {
+    final repository = ref.read(adminRepositoryProvider);
+    Future<Map<String, dynamic>> create(
+        String path, Map<String, dynamic> payload) {
+      return repository.createRecord(path, payload);
+    }
+
+    int? siteId;
+    final sites = data.rowsFor('Website Sites');
+    final pages = data.rowsFor('Website');
+    if (sites.isNotEmpty && sites.first['id'] is int) {
+      siteId = sites.first['id'] as int;
+    } else if (pages.isNotEmpty && pages.first['site'] is int) {
+      siteId = pages.first['site'] as int;
+    } else {
+      try {
+        final site = await create('/api/websites/sites/', {
+          'name': 'RestWell Demo',
+          'subdomain': 'restwell-demo-$suffix',
+          'is_published': true,
+        });
+        siteId = site['id'] as int;
+      } on DioException catch (error) {
+        _showMessage(error.response?.data?.toString() ??
+            'Website site already exists. Refresh and try again.');
+        return;
+      }
+    }
+
+    final page = await create('/api/websites/pages/', {
+      'site': siteId,
+      'slug': 'demo-page-$suffix',
+      'title': 'Demo Page $suffix',
+      'page_type': 'custom',
+      'content': {'headline': 'Demo Page $suffix'},
+      'sort_order': 10,
+      'is_published': false,
+    });
+    await _runAction(
+      () => create('/api/websites/blocks/', {
+        'page': page['id'],
+        'block_type': 'hero',
+        'content': {
+          'headline': 'Dignified care',
+          'body': 'Created from the admin workspace.',
+        },
+        'sort_order': 1,
+        'is_visible': true,
+      }),
+      'Website page and block created.',
     );
   }
 
@@ -216,7 +564,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Future<void> _runModuleWorkflow(String moduleTitle, Map<String, dynamic> row) async {
+  Future<void> _runModuleWorkflow(
+      String moduleTitle, Map<String, dynamic> row) async {
     final id = row['id'];
     if (id is! int) {
       return;
@@ -232,7 +581,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         );
         return;
       case 'Financials':
-        final amount = row['balance_due']?.toString() ?? row['total_amount']?.toString() ?? '0.00';
+        final amount = row['balance_due']?.toString() ??
+            row['total_amount']?.toString() ??
+            '0.00';
         await _runAction(
           () => ref.read(adminRepositoryProvider).runWorkflow(
             '/api/financials/invoices/$id/record-payment/',
@@ -245,26 +596,60 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         await _runAction(
           () => ref.read(adminRepositoryProvider).runWorkflow(
             '/api/inventory/items/$id/adjust-stock/',
-            {'quantity': '1.00', 'transaction_type': 'stock_in', 'note': 'Admin quick adjustment'},
+            {
+              'quantity': '1.00',
+              'transaction_type': 'stock_in',
+              'note': 'Admin quick adjustment'
+            },
           ),
           'Stock adjusted.',
         );
         return;
       case 'Mortuary':
         await _runAction(
-          () => ref.read(adminRepositoryProvider).runWorkflow('/api/mortuary/records/$id/release/'),
+          () => ref
+              .read(adminRepositoryProvider)
+              .runWorkflow('/api/mortuary/records/$id/release/'),
           'Mortuary record released.',
+        );
+        return;
+      case 'Routes':
+        await _runAction(
+          () => ref.read(adminRepositoryProvider).runWorkflow(
+            '/api/geolocation/routes/$id/log-location/',
+            {
+              'latitude': '-26.204100',
+              'longitude': '28.047300',
+              'accuracy_meters': '12.50',
+              'recorded_at': _dateTimeOffset(0),
+              'note': 'Admin workspace location check-in',
+            },
+          ),
+          'Location logged.',
+        );
+        return;
+      case 'Apps':
+        await _runAction(
+          () => ref.read(adminRepositoryProvider).runWorkflow(
+            '/api/branded-apps/configs/$id/request-build/',
+            {'git_ref': 'feature/milestone-4-functional-application'},
+          ),
+          'Android build requested.',
         );
         return;
       case 'Website':
         await _runAction(
-          () => ref.read(adminRepositoryProvider).runWorkflow('/api/websites/pages/$id/publish/'),
+          () => ref
+              .read(adminRepositoryProvider)
+              .runWorkflow('/api/websites/pages/$id/publish/'),
           'Website page published.',
         );
         return;
       case 'Notifications':
         await _runAction(
-          () => ref.read(adminRepositoryProvider).runWorkflow('/api/notifications/messages/$id/send/'),
+          () => ref
+              .read(adminRepositoryProvider)
+              .runWorkflow('/api/notifications/messages/$id/send/'),
           'Notification sent.',
         );
         return;
@@ -290,6 +675,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -380,6 +770,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             ? _completeTask
                             : null,
                         onRunWorkflow: _runModuleWorkflow,
+                        onCreateRecord: () =>
+                            _createModuleRecord(selectedModule.title, data),
                       ),
                   ],
                 );
@@ -438,14 +830,46 @@ class _Overview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final countTiles = [
-      ('Branches', Icons.account_tree_outlined, data.rowsFor('Branches').length),
-      ('Cases', Icons.assignment_outlined, data.summary.operations['cases'] ?? 0),
-      ('Policies', Icons.verified_user_outlined, data.summary.commercial['policy_templates'] ?? 0),
-      ('Financials', Icons.payments_outlined, data.summary.commercial['invoices'] ?? 0),
-      ('Inventory', Icons.inventory_2_outlined, data.summary.commercial['inventory_items'] ?? 0),
-      ('Scheduling', Icons.event_outlined, data.summary.operations['scheduled_events'] ?? 0),
-      ('Mortuary', Icons.local_hospital_outlined, data.summary.operations['mortuary_records'] ?? 0),
-      ('Onboarding', Icons.school_outlined, data.summary.digital['onboarding_open'] ?? 0),
+      (
+        'Branches',
+        Icons.account_tree_outlined,
+        data.rowsFor('Branches').length
+      ),
+      (
+        'Cases',
+        Icons.assignment_outlined,
+        data.summary.operations['cases'] ?? 0
+      ),
+      (
+        'Policies',
+        Icons.verified_user_outlined,
+        data.summary.commercial['policy_templates'] ?? 0
+      ),
+      (
+        'Financials',
+        Icons.payments_outlined,
+        data.summary.commercial['invoices'] ?? 0
+      ),
+      (
+        'Inventory',
+        Icons.inventory_2_outlined,
+        data.summary.commercial['inventory_items'] ?? 0
+      ),
+      (
+        'Scheduling',
+        Icons.event_outlined,
+        data.summary.operations['scheduled_events'] ?? 0
+      ),
+      (
+        'Mortuary',
+        Icons.local_hospital_outlined,
+        data.summary.operations['mortuary_records'] ?? 0
+      ),
+      (
+        'Onboarding',
+        Icons.school_outlined,
+        data.summary.digital['onboarding_open'] ?? 0
+      ),
     ];
 
     return Column(
@@ -537,6 +961,7 @@ class _ModuleView extends StatelessWidget {
     this.onCreateWebsite,
     this.onCompleteTask,
     required this.onRunWorkflow,
+    required this.onCreateRecord,
   });
 
   final _ModuleConfig module;
@@ -545,7 +970,9 @@ class _ModuleView extends StatelessWidget {
   final VoidCallback? onCreateBranding;
   final VoidCallback? onCreateWebsite;
   final Future<void> Function(int id)? onCompleteTask;
-  final Future<void> Function(String moduleTitle, Map<String, dynamic> row) onRunWorkflow;
+  final Future<void> Function(String moduleTitle, Map<String, dynamic> row)
+      onRunWorkflow;
+  final Future<void> Function() onCreateRecord;
 
   @override
   Widget build(BuildContext context) {
@@ -576,6 +1003,12 @@ class _ModuleView extends StatelessWidget {
                 onPressed: onCreateWebsite,
                 icon: const Icon(Icons.add),
                 label: const Text('Create site'),
+              ),
+            if (_canCreate(module.title))
+              FilledButton.icon(
+                onPressed: () => onCreateRecord(),
+                icon: const Icon(Icons.add),
+                label: const Text('New record'),
               ),
           ],
         ),
@@ -617,7 +1050,8 @@ class _ModuleView extends StatelessWidget {
   }
 
   Widget _completeTaskButton(Map<String, dynamic> row) {
-    final completed = row['is_completed'] == true || row['completed_at'] != null;
+    final completed =
+        row['is_completed'] == true || row['completed_at'] != null;
     if (completed) {
       return const Icon(Icons.check_circle, color: Colors.green);
     }
@@ -633,6 +1067,47 @@ class _ModuleView extends StatelessWidget {
   }
 }
 
+bool _canCreate(String moduleTitle) {
+  return {
+    'Branches',
+    'Cases',
+    'Deceased',
+    'Family Members',
+    'Policies',
+    'Financials',
+    'Inventory',
+    'Scheduling',
+    'Mortuary',
+    'Routes',
+    'Website',
+    'Apps',
+    'Notifications',
+    'Onboarding',
+    'Help',
+  }.contains(moduleTitle);
+}
+
+int? _firstId(List<Map<String, dynamic>> rows) {
+  if (rows.isEmpty || rows.first['id'] is! int) {
+    return null;
+  }
+  return rows.first['id'] as int;
+}
+
+String _dateOffset(int days) {
+  return DateTime.now()
+      .add(Duration(days: days))
+      .toIso8601String()
+      .substring(0, 10);
+}
+
+String _dateTimeOffset(int days, {int hours = 0}) {
+  return DateTime.now()
+      .add(Duration(days: days, hours: hours))
+      .toUtc()
+      .toIso8601String();
+}
+
 String? _workflowLabel(String moduleTitle, Map<String, dynamic> row) {
   switch (moduleTitle) {
     case 'Cases':
@@ -643,6 +1118,10 @@ String? _workflowLabel(String moduleTitle, Map<String, dynamic> row) {
       return 'Stock +1';
     case 'Mortuary':
       return row['status'] == 'released' ? null : 'Release';
+    case 'Routes':
+      return 'Log location';
+    case 'Apps':
+      return 'Request build';
     case 'Website':
       return row['is_published'] == true ? null : 'Publish';
     case 'Notifications':
