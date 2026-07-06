@@ -343,6 +343,10 @@ class ClientDashboardScreen extends ConsumerWidget {
                 rows: dashboard['policies'] as List<dynamic>? ?? const [],
                 titleKey: 'policy_number',
                 subtitleKey: 'template'),
+            _FinancialSummary(
+                summary: dashboard['financials'] as Map<String, dynamic>?),
+            _InvoiceSection(
+                rows: dashboard['invoices'] as List<dynamic>? ?? const []),
             _Section(
                 title: 'Services',
                 rows: dashboard['events'] as List<dynamic>? ?? const [],
@@ -425,6 +429,108 @@ class ClientDashboardScreen extends ConsumerWidget {
     await ref
         .read(clientControllerProvider)
         .submitSupport(result.$1, result.$2);
+  }
+}
+
+class _FinancialSummary extends StatelessWidget {
+  const _FinancialSummary({required this.summary});
+
+  final Map<String, dynamic>? summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = summary ?? const <String, dynamic>{};
+    final tiles = [
+      ('Invoices', (data['invoice_count'] ?? 0).toString()),
+      ('Total', _money(data['total_amount'])),
+      ('Paid', _money(data['amount_paid'])),
+      ('Balance', _money(data['balance_due'])),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 8),
+          child:
+              Text('Payments', style: Theme.of(context).textTheme.titleLarge),
+        ),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final tile in tiles)
+              SizedBox(
+                width: 150,
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(tile.$1,
+                            style: Theme.of(context).textTheme.labelMedium),
+                        const SizedBox(height: 8),
+                        Text(tile.$2,
+                            style: Theme.of(context).textTheme.titleMedium),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _InvoiceSection extends StatelessWidget {
+  const _InvoiceSection({required this.rows});
+
+  final List<dynamic> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 8),
+          child:
+              Text('Invoices', style: Theme.of(context).textTheme.titleLarge),
+        ),
+        if (rows.isEmpty)
+          const Card(child: ListTile(title: Text('No invoices yet.')))
+        else
+          for (final row in rows.cast<Map<String, dynamic>>())
+            Card(
+              child: ExpansionTile(
+                title: Text((row['invoice_number'] ?? 'Invoice').toString()),
+                subtitle: Text(
+                  'Status: ${row['status'] ?? '-'} | Balance: ${_money(row['balance_due'])}',
+                ),
+                children: [
+                  ListTile(
+                    title: Text('Total ${_money(row['total_amount'])}'),
+                    subtitle: Text(
+                      'Paid ${_money(row['amount_paid'])} | Due ${row['due_date'] ?? '-'}',
+                    ),
+                  ),
+                  for (final payment
+                      in (row['payments'] as List<dynamic>? ?? const [])
+                          .cast<Map<String, dynamic>>())
+                    ListTile(
+                      leading: const Icon(Icons.payments_outlined),
+                      title: Text(_money(payment['amount'])),
+                      subtitle: Text(
+                        '${payment['method'] ?? '-'} | ${payment['status'] ?? '-'}',
+                      ),
+                    ),
+                ],
+              ),
+            ),
+      ],
+    );
   }
 }
 
@@ -648,4 +754,16 @@ Color _hexColor(String? value) {
     return const Color(0xFF0F766E);
   }
   return Color(int.parse(value.substring(1), radix: 16) + 0xFF000000);
+}
+
+String _money(dynamic value) {
+  final amount = _numberValue(value);
+  return 'R ${amount.toStringAsFixed(2)}';
+}
+
+double _numberValue(dynamic value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+  return double.tryParse(value?.toString() ?? '') ?? 0;
 }

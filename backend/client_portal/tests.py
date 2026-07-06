@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -5,6 +8,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 from cases.models import Case, Deceased, FamilyMember
 from client_portal.models import ClientSupportRequest
+from financials.models import Invoice, InvoiceLineItem, Payment
 from notifications.models import NotificationMessage
 from policies.models import PolicyEnrollment, PolicyTemplate, Underwriter
 from tenants.models import Branch, Tenant
@@ -57,6 +61,33 @@ class ClientPortalApiTests(APITestCase):
             policy_number="POL-001",
             start_date="2026-07-01",
         )
+        self.invoice = Invoice.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            case=self.case,
+            invoice_number="INV-001",
+            customer_name="Lerato Mokoena",
+            customer_email="family@example.com",
+            issue_date=date.today(),
+            due_date=date.today(),
+            status=Invoice.Status.ISSUED,
+            created_by=self.admin_user,
+        )
+        InvoiceLineItem.objects.create(
+            tenant=self.tenant,
+            invoice=self.invoice,
+            description="Funeral service",
+            quantity=Decimal("1.00"),
+            unit_price=Decimal("8500.00"),
+        )
+        Payment.objects.create(
+            tenant=self.tenant,
+            invoice=self.invoice,
+            amount=Decimal("2500.00"),
+            method=Payment.Method.CASH,
+            status=Payment.Status.COMPLETED,
+            received_by=self.admin_user,
+        )
         self.notification = NotificationMessage.objects.create(
             tenant=self.tenant,
             recipient_user=self.family_user,
@@ -104,6 +135,11 @@ class ClientPortalApiTests(APITestCase):
         self.assertEqual(response.data["family_members"][0]["name"], "Lerato Mokoena")
         self.assertEqual(response.data["cases"][0]["reference"], "CASE-001")
         self.assertEqual(response.data["policies"][0]["policy_number"], "POL-001")
+        self.assertEqual(response.data["financials"]["invoice_count"], 1)
+        self.assertEqual(Decimal(response.data["financials"]["total_amount"]), Decimal("8500.00"))
+        self.assertEqual(Decimal(response.data["financials"]["amount_paid"]), Decimal("2500.00"))
+        self.assertEqual(response.data["invoices"][0]["invoice_number"], "INV-001")
+        self.assertEqual(len(response.data["invoices"][0]["payments"]), 1)
         self.assertEqual(response.data["notifications"][0]["subject"], "Welcome")
         self.assertEqual(response.data["support_requests"], [])
         self.assertEqual(response.data["public_pages"][0]["slug"], "service")

@@ -7,6 +7,7 @@ from rest_framework.viewsets import ModelViewSet
 
 from branding.models import TenantBranding
 from cases.models import FamilyMember
+from financials.models import Invoice
 from notifications.models import NotificationMessage
 from policies.models import PolicyEnrollment
 from scheduling.models import CalendarEvent
@@ -36,6 +37,7 @@ def client_dashboard(request):
     case_ids = list(family_members.values_list("case_id", flat=True))
     branding = TenantBranding.objects.filter(tenant=tenant, is_active=True).first() if tenant else None
     policies = PolicyEnrollment.objects.filter(tenant=tenant, family_member__in=family_members).select_related("policy_template", "underwriter")
+    invoices = Invoice.objects.filter(tenant=tenant, case_id__in=case_ids).prefetch_related("payments").order_by("-issue_date", "-id")
     events = CalendarEvent.objects.filter(tenant=tenant, case_id__in=case_ids).order_by("starts_at")
     notifications = NotificationMessage.objects.filter(tenant=tenant, recipient_user=request.user).order_by("-created_at")[:10]
     support_requests = ClientSupportRequest.objects.filter(tenant=tenant, created_by=request.user).order_by("-created_at")[:10]
@@ -82,6 +84,37 @@ def client_dashboard(request):
                     "underwriter": policy.underwriter.name,
                 }
                 for policy in policies
+            ],
+            "financials": {
+                "invoice_count": invoices.count(),
+                "total_amount": sum(invoice.total_amount for invoice in invoices),
+                "amount_paid": sum(invoice.amount_paid for invoice in invoices),
+                "balance_due": sum(invoice.balance_due for invoice in invoices),
+            },
+            "invoices": [
+                {
+                    "id": invoice.id,
+                    "invoice_number": invoice.invoice_number,
+                    "case": invoice.case_id,
+                    "customer_name": invoice.customer_name,
+                    "issue_date": invoice.issue_date,
+                    "due_date": invoice.due_date,
+                    "status": invoice.status,
+                    "total_amount": invoice.total_amount,
+                    "amount_paid": invoice.amount_paid,
+                    "balance_due": invoice.balance_due,
+                    "payments": [
+                        {
+                            "id": payment.id,
+                            "amount": payment.amount,
+                            "method": payment.method,
+                            "status": payment.status,
+                            "received_at": payment.received_at,
+                        }
+                        for payment in invoice.payments.all()
+                    ],
+                }
+                for invoice in invoices
             ],
             "events": [
                 {
