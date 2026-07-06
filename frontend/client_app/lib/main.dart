@@ -95,6 +95,14 @@ class ClientApi {
       '/api/client/notifications/$id/mark-read/',
     );
   }
+
+  Future<Map<String, dynamic>> publicPage(
+      String tenantSlug, String pageSlug) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/api/websites/public/$tenantSlug/$pageSlug/',
+    );
+    return response.data!;
+  }
 }
 
 class ClientState {
@@ -342,6 +350,10 @@ class ClientDashboardScreen extends ConsumerWidget {
                 subtitleKey: 'location'),
             _NotificationSection(
                 rows: dashboard['notifications'] as List<dynamic>? ?? const []),
+            _PublicPagesSection(
+              tenantSlug: tenant?['slug'] as String?,
+              rows: dashboard['public_pages'] as List<dynamic>? ?? const [],
+            ),
             _Section(
                 title: 'Support requests',
                 rows:
@@ -413,6 +425,144 @@ class ClientDashboardScreen extends ConsumerWidget {
     await ref
         .read(clientControllerProvider)
         .submitSupport(result.$1, result.$2);
+  }
+}
+
+class _PublicPagesSection extends ConsumerWidget {
+  const _PublicPagesSection({
+    required this.tenantSlug,
+    required this.rows,
+  });
+
+  final String? tenantSlug;
+  final List<dynamic> rows;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 8),
+          child: Text('Memorial & service pages',
+              style: Theme.of(context).textTheme.titleLarge),
+        ),
+        if (rows.isEmpty)
+          const Card(child: ListTile(title: Text('No published pages yet.')))
+        else
+          for (final row in rows.cast<Map<String, dynamic>>())
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.language),
+                title: Text((row['title'] ?? 'Page').toString()),
+                subtitle:
+                    Text((row['page_type'] ?? row['slug'] ?? '').toString()),
+                trailing: TextButton(
+                  onPressed: tenantSlug == null
+                      ? null
+                      : () => _showPublicPagePreview(
+                            context,
+                            ref,
+                            tenantSlug!,
+                            (row['slug'] ?? '').toString(),
+                          ),
+                  child: const Text('Preview'),
+                ),
+              ),
+            ),
+      ],
+    );
+  }
+
+  Future<void> _showPublicPagePreview(
+    BuildContext context,
+    WidgetRef ref,
+    String tenantSlug,
+    String pageSlug,
+  ) async {
+    if (pageSlug.isEmpty) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        final pageFuture =
+            ref.read(clientApiProvider).publicPage(tenantSlug, pageSlug);
+        return AlertDialog(
+          title: const Text('Page preview'),
+          content: SizedBox(
+            width: 520,
+            child: FutureBuilder<Map<String, dynamic>>(
+              future: pageFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 120,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError || snapshot.data == null) {
+                  return const Text('The page preview could not be loaded.');
+                }
+                final page = snapshot.data!;
+                final blocks = page['blocks'] as List<dynamic>? ?? const [];
+                return SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text((page['title'] ?? 'Page').toString(),
+                          style: Theme.of(context).textTheme.headlineSmall),
+                      const SizedBox(height: 8),
+                      Text((page['site'] ?? tenantSlug).toString()),
+                      const SizedBox(height: 16),
+                      if (blocks.isEmpty)
+                        const Text('No visible blocks have been published yet.')
+                      else
+                        for (final block in blocks.cast<Map<String, dynamic>>())
+                          _PublicBlock(block: block),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PublicBlock extends StatelessWidget {
+  const _PublicBlock({required this.block});
+
+  final Map<String, dynamic> block;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = (block['content'] as Map<String, dynamic>?) ?? const {};
+    final headline = content['headline']?.toString();
+    final body = content['body']?.toString() ?? content['text']?.toString();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (headline != null && headline.isNotEmpty)
+            Text(headline, style: Theme.of(context).textTheme.titleMedium),
+          if (body != null && body.isNotEmpty) Text(body),
+          if ((headline == null || headline.isEmpty) &&
+              (body == null || body.isEmpty))
+            Text(content.toString()),
+        ],
+      ),
+    );
   }
 }
 

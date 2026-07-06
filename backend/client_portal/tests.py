@@ -8,6 +8,7 @@ from client_portal.models import ClientSupportRequest
 from notifications.models import NotificationMessage
 from policies.models import PolicyEnrollment, PolicyTemplate, Underwriter
 from tenants.models import Branch, Tenant
+from website_builder.models import WebsiteBlock, WebsitePage, WebsiteSite
 
 
 class ClientPortalApiTests(APITestCase):
@@ -63,6 +64,27 @@ class ClientPortalApiTests(APITestCase):
             subject="Welcome",
             body="Your portal is ready.",
         )
+        self.site = WebsiteSite.objects.create(
+            tenant=self.tenant,
+            name="RestWell Demo",
+            subdomain="restwell-demo",
+            is_published=True,
+        )
+        self.page = WebsitePage.objects.create(
+            tenant=self.tenant,
+            site=self.site,
+            slug="service",
+            title="Service Information",
+            page_type="service",
+            is_published=True,
+        )
+        WebsiteBlock.objects.create(
+            tenant=self.tenant,
+            page=self.page,
+            block_type="text",
+            content={"body": "Memorial service details."},
+            sort_order=1,
+        )
 
     def authenticate(self, username="family@restwell.local"):
         response = self.client.post(
@@ -84,6 +106,8 @@ class ClientPortalApiTests(APITestCase):
         self.assertEqual(response.data["policies"][0]["policy_number"], "POL-001")
         self.assertEqual(response.data["notifications"][0]["subject"], "Welcome")
         self.assertEqual(response.data["support_requests"], [])
+        self.assertEqual(response.data["public_pages"][0]["slug"], "service")
+        self.assertEqual(response.data["public_pages"][0]["url"], "/api/websites/public/restwell-demo/service/")
 
     def test_family_user_creates_support_request(self):
         self.authenticate()

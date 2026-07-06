@@ -10,6 +10,7 @@ from cases.models import FamilyMember
 from notifications.models import NotificationMessage
 from policies.models import PolicyEnrollment
 from scheduling.models import CalendarEvent
+from website_builder.models import WebsitePage
 from .models import ClientSupportRequest
 from .serializers import ClientSupportRequestSerializer
 
@@ -38,6 +39,11 @@ def client_dashboard(request):
     events = CalendarEvent.objects.filter(tenant=tenant, case_id__in=case_ids).order_by("starts_at")
     notifications = NotificationMessage.objects.filter(tenant=tenant, recipient_user=request.user).order_by("-created_at")[:10]
     support_requests = ClientSupportRequest.objects.filter(tenant=tenant, created_by=request.user).order_by("-created_at")[:10]
+    public_pages = WebsitePage.objects.filter(
+        tenant=tenant,
+        site__is_published=True,
+        is_published=True,
+    ).select_related("site").order_by("sort_order", "title")
 
     return Response(
         {
@@ -106,6 +112,16 @@ def client_dashboard(request):
                     "created_at": support.created_at,
                 }
                 for support in support_requests
+            ],
+            "public_pages": [
+                {
+                    "id": page.id,
+                    "title": page.title,
+                    "slug": page.slug,
+                    "page_type": page.page_type,
+                    "url": f"/api/websites/public/{tenant.slug}/{page.slug}/",
+                }
+                for page in public_pages
             ],
         }
     )
