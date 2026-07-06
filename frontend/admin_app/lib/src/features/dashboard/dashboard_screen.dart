@@ -415,6 +415,158 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  Future<void> _createInvoiceForm(_DashboardData data, String suffix) async {
+    final branch = _firstId(data.rowsFor('Branches'));
+    if (branch == null) {
+      _showMessage('Create a branch first.');
+      return;
+    }
+    final caseId = _firstId(data.rowsFor('Cases'));
+    final invoiceNumberController = TextEditingController(text: 'INV-$suffix');
+    final customerNameController = TextEditingController(text: 'Demo Customer');
+    final customerEmailController =
+        TextEditingController(text: 'family@example.com');
+    final issueDateController = TextEditingController(text: _dateOffset(0));
+    final dueDateController = TextEditingController(text: _dateOffset(7));
+    final descriptionController =
+        TextEditingController(text: 'Funeral service package');
+    final quantityController = TextEditingController(text: '1.00');
+    final unitPriceController = TextEditingController(text: '8500.00');
+    final taxAmountController = TextEditingController(text: '0.00');
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Create invoice'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: invoiceNumberController,
+                    decoration:
+                        const InputDecoration(labelText: 'Invoice number'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: customerNameController,
+                    decoration:
+                        const InputDecoration(labelText: 'Customer name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: customerEmailController,
+                    decoration:
+                        const InputDecoration(labelText: 'Customer email'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: issueDateController,
+                    decoration: const InputDecoration(
+                        labelText: 'Issue date', hintText: 'YYYY-MM-DD'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: dueDateController,
+                    decoration: const InputDecoration(
+                        labelText: 'Due date', hintText: 'YYYY-MM-DD'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descriptionController,
+                    decoration:
+                        const InputDecoration(labelText: 'Line description'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: quantityController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Quantity'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: unitPriceController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Unit price'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: taxAmountController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Tax amount'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (invoiceNumberController.text.trim().isEmpty ||
+                    customerNameController.text.trim().isEmpty ||
+                    descriptionController.text.trim().isEmpty) {
+                  return;
+                }
+                Navigator.pop(context, {
+                  'invoice': {
+                    'branch': branch,
+                    'case': caseId,
+                    'invoice_number': invoiceNumberController.text.trim(),
+                    'customer_name': customerNameController.text.trim(),
+                    'customer_email': customerEmailController.text.trim(),
+                    'issue_date': issueDateController.text.trim(),
+                    'due_date': dueDateController.text.trim(),
+                    'status': 'issued',
+                  },
+                  'line_item': {
+                    'description': descriptionController.text.trim(),
+                    'quantity': quantityController.text.trim(),
+                    'unit_price': unitPriceController.text.trim(),
+                    'tax_amount': taxAmountController.text.trim(),
+                  },
+                });
+              },
+              child: const Text('Create invoice'),
+            ),
+          ],
+        );
+      },
+    );
+
+    invoiceNumberController.dispose();
+    customerNameController.dispose();
+    customerEmailController.dispose();
+    issueDateController.dispose();
+    dueDateController.dispose();
+    descriptionController.dispose();
+    quantityController.dispose();
+    unitPriceController.dispose();
+    taxAmountController.dispose();
+
+    if (result == null) {
+      return;
+    }
+
+    await _runAction(() async {
+      final repository = ref.read(adminRepositoryProvider);
+      final invoice = await repository.createRecord(
+        '/api/financials/invoices/',
+        (result['invoice'] as Map<String, dynamic>),
+      );
+      await repository.createRecord('/api/financials/line-items/', {
+        ...(result['line_item'] as Map<String, dynamic>),
+        'invoice': invoice['id'],
+      });
+      return invoice;
+    }, 'Invoice created.');
+  }
+
   Future<void> _createModuleRecord(
       String moduleTitle, _DashboardData data) async {
     final repository = ref.read(adminRepositoryProvider);
@@ -537,29 +689,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         );
         return;
       case 'Financials':
-        if (branch == null) {
-          _showMessage('Create a branch first.');
-          return;
-        }
-        final invoice = await create('/api/financials/invoices/', {
-          'branch': branch,
-          'case': caseId,
-          'invoice_number': 'INV-$suffix',
-          'customer_name': 'Demo Customer',
-          'customer_email': 'family@example.com',
-          'issue_date': _dateOffset(0),
-          'due_date': _dateOffset(7),
-          'status': 'issued',
-        });
-        await _runAction(
-          () => create('/api/financials/line-items/', {
-            'invoice': invoice['id'],
-            'description': 'Demo funeral service',
-            'quantity': '1.00',
-            'unit_price': '8500.00',
-          }),
-          'Invoice created.',
-        );
+        await _createInvoiceForm(data, suffix);
         return;
       case 'Inventory':
         if (branch == null) {
