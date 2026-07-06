@@ -91,6 +91,24 @@ class Command(BaseCommand):
             last_name="Mokoena",
             defaults={"relationship": "Daughter", "phone": "+27110000000", "email": "family@example.com", "is_next_of_kin": True},
         )
+        family_user, _ = User.objects.get_or_create(
+            username="family@restwell.local",
+            defaults={
+                "email": "family@example.com",
+                "first_name": "Lerato",
+                "last_name": "Mokoena",
+                "tenant": tenant,
+                "branch": branch,
+                "role": User.Role.FAMILY,
+            },
+        )
+        family_user.email = "family@example.com"
+        family_user.tenant = tenant
+        family_user.branch = branch
+        family_user.role = User.Role.FAMILY
+        family_user.is_active = True
+        family_user.set_password("RestWell123!")
+        family_user.save()
         ConsentRecord.objects.get_or_create(
             tenant=tenant,
             subject_name=f"{family.first_name} {family.last_name}",

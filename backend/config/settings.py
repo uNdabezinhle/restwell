@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "onboarding",
     "platform_core",
     "notifications",
+    "client_portal",
 ]
 
 MIDDLEWARE = [
