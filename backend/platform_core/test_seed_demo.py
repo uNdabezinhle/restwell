@@ -21,6 +21,7 @@ class SeedDemoCommandTests(TestCase):
 
         tenant = Tenant.objects.get(slug="restwell-demo")
         self.assertTrue(User.objects.filter(username="admin@restwell.local", tenant=tenant).exists())
+        self.assertTrue(User.objects.filter(username="staff@restwell.local", tenant=tenant, role=User.Role.STAFF).exists())
         self.assertTrue(User.objects.filter(username="family@restwell.local", tenant=tenant).exists())
         self.assertGreaterEqual(TenantFeature.objects.filter(tenant=tenant, is_enabled=True).count(), 5)
         self.assertTrue(Case.objects.filter(tenant=tenant).exists())

@@ -27,6 +27,13 @@ class CaseManagementApiTests(APITestCase):
             branch=self.other_branch,
             role=User.Role.TENANT_ADMIN,
         )
+        self.staff_user = User.objects.create_user(
+            username="case-staff",
+            password="test-password",
+            tenant=self.tenant,
+            branch=self.branch,
+            role=User.Role.STAFF,
+        )
 
     def authenticate(self, username="case-admin"):
         response = self.client.post(
@@ -69,6 +76,24 @@ class CaseManagementApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["tenant"], self.tenant.id)
+
+    def test_staff_user_creates_case_record_for_current_tenant(self):
+        self.authenticate("case-staff")
+        deceased = self.create_deceased()
+
+        response = self.client.post(
+            reverse("case-list"),
+            {
+                "branch": self.branch.id,
+                "deceased": deceased.id,
+                "reference": "CASE-STAFF",
+                "status": Case.Status.NEW,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["created_by"], self.staff_user.id)
 
     def test_creates_case_for_current_tenant(self):
         self.authenticate()

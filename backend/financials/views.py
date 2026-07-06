@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
-from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from accounts.permissions import IsTenantOperationsUser
 from platform_core.models import AuditLog
 from platform_core.services import write_audit_log
 from .models import DebtorAccount, Invoice, InvoiceLineItem, Payment
@@ -13,7 +13,7 @@ from .serializers import DebtorAccountSerializer, InvoiceLineItemSerializer, Inv
 
 
 class TenantScopedFinancialViewSet(ModelViewSet):
-    permission_classes = [IsTenantAdminOrPlatformAdmin]
+    permission_classes = [IsTenantOperationsUser]
     tenant_field = "tenant_id"
 
     def get_queryset(self):
@@ -108,7 +108,7 @@ class PaymentViewSet(TenantScopedFinancialViewSet):
 class DebtorAccountViewSet(ReadOnlyModelViewSet):
     queryset = DebtorAccount.objects.select_related("tenant", "invoice")
     serializer_class = DebtorAccountSerializer
-    permission_classes = [IsTenantAdminOrPlatformAdmin]
+    permission_classes = [IsTenantOperationsUser]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -121,7 +121,7 @@ class DebtorAccountViewSet(ReadOnlyModelViewSet):
 
 
 @api_view(["GET"])
-@permission_classes([IsTenantAdminOrPlatformAdmin])
+@permission_classes([IsTenantOperationsUser])
 def financial_summary(request):
     invoices = Invoice.objects.all()
     debtors = DebtorAccount.objects.all()

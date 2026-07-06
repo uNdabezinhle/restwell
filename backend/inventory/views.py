@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from accounts.permissions import IsTenantOperationsUser
 from platform_core.models import AuditLog
 from platform_core.services import write_audit_log
 from .models import InventoryItem, InventoryTransaction
@@ -13,7 +13,7 @@ from .serializers import InventoryItemSerializer, InventoryTransactionSerializer
 
 
 class TenantScopedInventoryViewSet(ModelViewSet):
-    permission_classes = [IsTenantAdminOrPlatformAdmin]
+    permission_classes = [IsTenantOperationsUser]
     tenant_field = "tenant_id"
 
     def get_queryset(self):

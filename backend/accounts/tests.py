@@ -95,6 +95,13 @@ class UserAdminApiTests(APITestCase):
             branch=self.branch,
             role=User.Role.TENANT_ADMIN,
         )
+        self.staff_user = User.objects.create_user(
+            username="staff",
+            password="test-password",
+            tenant=self.tenant,
+            branch=self.branch,
+            role=User.Role.STAFF,
+        )
         other_tenant = Tenant.objects.create(name="Other Care", slug="other-care")
         self.other_branch = Branch.objects.create(tenant=other_tenant, name="Durban", code="DBN")
         User.objects.create_user(
@@ -161,3 +168,15 @@ class UserAdminApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_staff_user_cannot_manage_users(self):
+        response = self.client.post(
+            reverse("token_obtain_pair"),
+            {"username": "staff", "password": "test-password"},
+            format="json",
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+
+        response = self.client.get(reverse("user-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

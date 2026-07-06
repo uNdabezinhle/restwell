@@ -52,6 +52,26 @@ class Command(BaseCommand):
         admin.is_active = True
         admin.set_password("RestWell123!")
         admin.save()
+        staff, _ = User.objects.get_or_create(
+            username="staff@restwell.local",
+            defaults={
+                "email": "staff@restwell.local",
+                "first_name": "RestWell",
+                "last_name": "Staff",
+                "tenant": tenant,
+                "branch": branch,
+                "role": User.Role.STAFF,
+                "is_staff": True,
+            },
+        )
+        staff.email = "staff@restwell.local"
+        staff.tenant = tenant
+        staff.branch = branch
+        staff.role = User.Role.STAFF
+        staff.is_staff = True
+        staff.is_active = True
+        staff.set_password("RestWell123!")
+        staff.save()
 
         for code in TenantFeature.Code.values:
             TenantFeature.objects.update_or_create(tenant=tenant, code=code, defaults={"is_enabled": True})

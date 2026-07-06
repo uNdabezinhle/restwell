@@ -3,7 +3,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from accounts.permissions import IsTenantOperationsUser
 from platform_core.models import AuditLog
 from platform_core.services import write_audit_log
 from .models import Case, CaseDocument, Deceased, FamilyMember
@@ -11,7 +11,7 @@ from .serializers import CaseDocumentSerializer, CaseSerializer, DeceasedSeriali
 
 
 class TenantScopedViewSet(ModelViewSet):
-    permission_classes = [IsTenantAdminOrPlatformAdmin]
+    permission_classes = [IsTenantOperationsUser]
     tenant_field = "tenant_id"
 
     def get_queryset(self):

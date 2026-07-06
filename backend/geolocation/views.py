@@ -3,7 +3,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from accounts.permissions import IsTenantOperationsUser
 from platform_core.models import AuditLog, TenantFeature
 from platform_core.permissions import HasTenantFeature
 from platform_core.services import write_audit_log
@@ -12,7 +12,7 @@ from .serializers import LocationLogSerializer, LocationRouteSerializer
 
 
 class TenantScopedGeolocationViewSet(ModelViewSet):
-    permission_classes = [IsTenantAdminOrPlatformAdmin, HasTenantFeature]
+    permission_classes = [IsTenantOperationsUser, HasTenantFeature]
     feature_code = TenantFeature.Code.GEOLOCATION
     tenant_field = "tenant_id"
 

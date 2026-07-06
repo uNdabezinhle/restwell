@@ -1,13 +1,13 @@
 from rest_framework.exceptions import ValidationError
 from rest_framework.viewsets import ModelViewSet
 
-from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from accounts.permissions import IsTenantOperationsUser
 from .models import PolicyEnrollment, PolicyTemplate, PremiumPayment, Underwriter
 from .serializers import PolicyEnrollmentSerializer, PolicyTemplateSerializer, PremiumPaymentSerializer, UnderwriterSerializer
 
 
 class TenantScopedPolicyViewSet(ModelViewSet):
-    permission_classes = [IsTenantAdminOrPlatformAdmin]
+    permission_classes = [IsTenantOperationsUser]
     tenant_field = "tenant_id"
 
     def get_queryset(self):
