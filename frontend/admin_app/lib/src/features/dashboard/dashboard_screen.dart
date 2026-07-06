@@ -42,6 +42,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _ModuleConfig('Apps', Icons.android_outlined, '/api/branded-apps/configs/'),
     _ModuleConfig('Notifications', Icons.notifications_outlined,
         '/api/notifications/messages/'),
+    _ModuleConfig('Support', Icons.support_agent_outlined,
+        '/api/client/support-requests/'),
     _ModuleConfig(
         'Onboarding', Icons.school_outlined, '/api/onboarding/tasks/'),
     _ModuleConfig(
@@ -653,6 +655,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           'Notification sent.',
         );
         return;
+      case 'Support':
+        await _runAction(
+          () => ref
+              .read(adminRepositoryProvider)
+              .runWorkflow('/api/client/support-requests/$id/resolve/'),
+          'Support request resolved.',
+        );
+        return;
     }
   }
 
@@ -1126,6 +1136,8 @@ String? _workflowLabel(String moduleTitle, Map<String, dynamic> row) {
       return row['is_published'] == true ? null : 'Publish';
     case 'Notifications':
       return row['status'] == 'sent' ? null : 'Send';
+    case 'Support':
+      return row['status'] == 'resolved' ? null : 'Resolve';
   }
   return null;
 }
@@ -1156,6 +1168,7 @@ String _rowInitial(Map<String, dynamic> row) {
 String _rowTitle(Map<String, dynamic> row) {
   for (final key in [
     'title',
+    'subject',
     'name',
     'reference',
     'intake_reference',
@@ -1182,6 +1195,7 @@ String _rowSubtitle(Map<String, dynamic> row) {
     'status',
     'category',
     'role',
+    'message',
     'branch_name',
     'storage_location',
     'storage_unit',

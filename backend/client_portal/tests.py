@@ -22,6 +22,14 @@ class ClientPortalApiTests(APITestCase):
             branch=self.branch,
             role=User.Role.FAMILY,
         )
+        self.admin_user = User.objects.create_user(
+            username="admin@restwell.local",
+            password="test-password",
+            email="admin@restwell.local",
+            tenant=self.tenant,
+            branch=self.branch,
+            role=User.Role.TENANT_ADMIN,
+        )
         self.deceased = Deceased.objects.create(tenant=self.tenant, branch=self.branch, first_name="Thabo", last_name="Mokoena")
         self.case = Case.objects.create(tenant=self.tenant, branch=self.branch, deceased=self.deceased, reference="CASE-001")
         self.family_member = FamilyMember.objects.create(
@@ -48,7 +56,7 @@ class ClientPortalApiTests(APITestCase):
             policy_number="POL-001",
             start_date="2026-07-01",
         )
-        NotificationMessage.objects.create(
+        self.notification = NotificationMessage.objects.create(
             tenant=self.tenant,
             recipient_user=self.family_user,
             channel=NotificationMessage.Channel.IN_APP,
@@ -56,10 +64,10 @@ class ClientPortalApiTests(APITestCase):
             body="Your portal is ready.",
         )
 
-    def authenticate(self):
+    def authenticate(self, username="family@restwell.local"):
         response = self.client.post(
             reverse("token_obtain_pair"),
-            {"username": "family@restwell.local", "password": "test-password"},
+            {"username": username, "password": "test-password"},
             format="json",
         )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
@@ -75,6 +83,7 @@ class ClientPortalApiTests(APITestCase):
         self.assertEqual(response.data["cases"][0]["reference"], "CASE-001")
         self.assertEqual(response.data["policies"][0]["policy_number"], "POL-001")
         self.assertEqual(response.data["notifications"][0]["subject"], "Welcome")
+        self.assertEqual(response.data["support_requests"], [])
 
     def test_family_user_creates_support_request(self):
         self.authenticate()
@@ -88,3 +97,29 @@ class ClientPortalApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["tenant"], self.tenant.id)
         self.assertEqual(ClientSupportRequest.objects.get().family_member, self.family_member)
+
+    def test_family_user_marks_own_notification_read(self):
+        self.authenticate()
+
+        response = self.client.post(reverse("client-notification-mark-read", args=[self.notification.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.notification.refresh_from_db()
+        self.assertEqual(self.notification.status, NotificationMessage.Status.READ)
+        self.assertIsNotNone(self.notification.read_at)
+
+    def test_tenant_admin_resolves_support_request(self):
+        support_request = ClientSupportRequest.objects.create(
+            tenant=self.tenant,
+            family_member=self.family_member,
+            created_by=self.family_user,
+            subject="Need help",
+            message="Please call me.",
+        )
+        self.authenticate("admin@restwell.local")
+
+        response = self.client.post(reverse("client-support-request-resolve", args=[support_request.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        support_request.refresh_from_db()
+        self.assertEqual(support_request.status, ClientSupportRequest.Status.RESOLVED)

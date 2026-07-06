@@ -1,4 +1,5 @@
-from rest_framework.decorators import api_view, permission_classes
+from django.utils import timezone
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -36,6 +37,7 @@ def client_dashboard(request):
     policies = PolicyEnrollment.objects.filter(tenant=tenant, family_member__in=family_members).select_related("policy_template", "underwriter")
     events = CalendarEvent.objects.filter(tenant=tenant, case_id__in=case_ids).order_by("starts_at")
     notifications = NotificationMessage.objects.filter(tenant=tenant, recipient_user=request.user).order_by("-created_at")[:10]
+    support_requests = ClientSupportRequest.objects.filter(tenant=tenant, created_by=request.user).order_by("-created_at")[:10]
 
     return Response(
         {
@@ -95,6 +97,41 @@ def client_dashboard(request):
                 }
                 for message in notifications
             ],
+            "support_requests": [
+                {
+                    "id": support.id,
+                    "subject": support.subject,
+                    "message": support.message,
+                    "status": support.status,
+                    "created_at": support.created_at,
+                }
+                for support in support_requests
+            ],
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mark_notification_read(request, pk):
+    family_members = require_family_context(request.user)
+    message = NotificationMessage.objects.filter(
+        id=pk,
+        tenant=request.user.tenant,
+        recipient_user=request.user,
+    ).first()
+    if not message:
+        raise PermissionDenied("Notification is not available for this account.")
+    message.status = NotificationMessage.Status.READ
+    message.read_at = timezone.now()
+    message.save(update_fields=["status", "read_at"])
+    return Response(
+        {
+            "id": message.id,
+            "subject": message.subject,
+            "status": message.status,
+            "read_at": message.read_at,
+            "family_profiles": family_members.count(),
         }
     )
 
@@ -120,3 +157,12 @@ class ClientSupportRequestViewSet(ModelViewSet):
         if not self.request.user.tenant_id:
             raise ValidationError("A tenant-scoped user is required.")
         serializer.save(tenant=self.request.user.tenant, family_member=family_member, created_by=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="resolve")
+    def resolve(self, request, pk=None):
+        support_request = self.get_object()
+        if not request.user.is_tenant_admin and not request.user.is_platform_admin:
+            raise PermissionDenied("Only tenant administrators can resolve support requests.")
+        support_request.status = ClientSupportRequest.Status.RESOLVED
+        support_request.save(update_fields=["status", "updated_at"])
+        return Response(self.get_serializer(support_request).data)

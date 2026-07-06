@@ -19,8 +19,10 @@ final dioProvider = Provider<Dio>((ref) {
   );
 });
 
-final clientApiProvider = Provider<ClientApi>((ref) => ClientApi(ref.watch(dioProvider)));
-final clientControllerProvider = ChangeNotifierProvider<ClientController>((ref) {
+final clientApiProvider =
+    Provider<ClientApi>((ref) => ClientApi(ref.watch(dioProvider)));
+final clientControllerProvider =
+    ChangeNotifierProvider<ClientController>((ref) {
   return ClientController(ref.watch(clientApiProvider));
 });
 
@@ -38,7 +40,9 @@ class RestWellClientApp extends ConsumerWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: primaryColor),
         useMaterial3: true,
       ),
-      home: state.isSignedIn ? const ClientDashboardScreen() : const ClientLoginScreen(),
+      home: state.isSignedIn
+          ? const ClientDashboardScreen()
+          : const ClientLoginScreen(),
     );
   }
 }
@@ -67,7 +71,8 @@ class ClientApi {
 
   Future<Map<String, dynamic>> dashboard() async {
     try {
-      final response = await _dio.get<Map<String, dynamic>>('/api/client/dashboard/');
+      final response =
+          await _dio.get<Map<String, dynamic>>('/api/client/dashboard/');
       _cachedDashboard = response.data!;
       return response.data!;
     } on DioException {
@@ -82,6 +87,12 @@ class ClientApi {
     await _dio.post<Map<String, dynamic>>(
       '/api/client/support-requests/',
       data: {'subject': subject, 'message': message},
+    );
+  }
+
+  Future<void> markNotificationRead(int id) async {
+    await _dio.post<Map<String, dynamic>>(
+      '/api/client/notifications/$id/mark-read/',
     );
   }
 }
@@ -129,7 +140,8 @@ class ClientController extends ChangeNotifier {
       final dashboard = await _api.dashboard();
       state = ClientState(isSignedIn: true, dashboard: dashboard);
     } on DioException {
-      state = const ClientState(errorMessage: 'Unable to sign in. Check your details and try again.');
+      state = const ClientState(
+          errorMessage: 'Unable to sign in. Check your details and try again.');
     }
     notifyListeners();
   }
@@ -139,9 +151,11 @@ class ClientController extends ChangeNotifier {
     notifyListeners();
     try {
       final dashboard = await _api.dashboard();
-      state = state.copyWith(isSignedIn: true, isLoading: false, dashboard: dashboard);
+      state = state.copyWith(
+          isSignedIn: true, isLoading: false, dashboard: dashboard);
     } on DioException {
-      state = state.copyWith(isLoading: false, errorMessage: 'Unable to refresh right now.');
+      state = state.copyWith(
+          isLoading: false, errorMessage: 'Unable to refresh right now.');
     }
     notifyListeners();
   }
@@ -153,7 +167,21 @@ class ClientController extends ChangeNotifier {
       await _api.createSupportRequest(subject, message);
       await refresh();
     } on DioException {
-      state = state.copyWith(isLoading: false, errorMessage: 'Support request could not be sent.');
+      state = state.copyWith(
+          isLoading: false, errorMessage: 'Support request could not be sent.');
+      notifyListeners();
+    }
+  }
+
+  Future<void> markNotificationRead(int id) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    notifyListeners();
+    try {
+      await _api.markNotificationRead(id);
+      await refresh();
+    } on DioException {
+      state = state.copyWith(
+          isLoading: false, errorMessage: 'Notification could not be updated.');
       notifyListeners();
     }
   }
@@ -174,7 +202,8 @@ class ClientLoginScreen extends ConsumerStatefulWidget {
 
 class _ClientLoginScreenState extends ConsumerState<ClientLoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController(text: 'family@restwell.local');
+  final _usernameController =
+      TextEditingController(text: 'family@restwell.local');
   final _passwordController = TextEditingController(text: 'RestWell123!');
 
   @override
@@ -199,25 +228,32 @@ class _ClientLoginScreenState extends ConsumerState<ClientLoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('RestWell', style: Theme.of(context).textTheme.headlineMedium),
+                  Text('RestWell',
+                      style: Theme.of(context).textTheme.headlineMedium),
                   const SizedBox(height: 8),
                   const Text('Family portal'),
                   const SizedBox(height: 24),
                   TextFormField(
                     controller: _usernameController,
                     decoration: const InputDecoration(labelText: 'Username'),
-                    validator: (value) => value == null || value.trim().isEmpty ? 'Enter your username.' : null,
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Enter your username.'
+                        : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _passwordController,
                     obscureText: true,
                     decoration: const InputDecoration(labelText: 'Password'),
-                    validator: (value) => value == null || value.isEmpty ? 'Enter your password.' : null,
+                    validator: (value) => value == null || value.isEmpty
+                        ? 'Enter your password.'
+                        : null,
                   ),
                   if (state.errorMessage != null) ...[
                     const SizedBox(height: 12),
-                    Text(state.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    Text(state.errorMessage!,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error)),
                   ],
                   const SizedBox(height: 24),
                   FilledButton(
@@ -280,14 +316,38 @@ class ClientDashboardScreen extends ConsumerWidget {
                 child: ListTile(
                   leading: Icon(Icons.cloud_off),
                   title: Text('Offline view'),
-                  subtitle: Text('Showing the last loaded portal data. New requests need a connection.'),
+                  subtitle: Text(
+                      'Showing the last loaded portal data. New requests need a connection.'),
                 ),
               ),
-            _Section(title: 'Family', rows: dashboard['family_members'] as List<dynamic>? ?? const [], titleKey: 'name', subtitleKey: 'relationship'),
-            _Section(title: 'Cases', rows: dashboard['cases'] as List<dynamic>? ?? const [], titleKey: 'reference', subtitleKey: 'deceased'),
-            _Section(title: 'Policies', rows: dashboard['policies'] as List<dynamic>? ?? const [], titleKey: 'policy_number', subtitleKey: 'template'),
-            _Section(title: 'Services', rows: dashboard['events'] as List<dynamic>? ?? const [], titleKey: 'title', subtitleKey: 'location'),
-            _Section(title: 'Notifications', rows: dashboard['notifications'] as List<dynamic>? ?? const [], titleKey: 'subject', subtitleKey: 'body'),
+            _Section(
+                title: 'Family',
+                rows: dashboard['family_members'] as List<dynamic>? ?? const [],
+                titleKey: 'name',
+                subtitleKey: 'relationship'),
+            _Section(
+                title: 'Cases',
+                rows: dashboard['cases'] as List<dynamic>? ?? const [],
+                titleKey: 'reference',
+                subtitleKey: 'deceased'),
+            _Section(
+                title: 'Policies',
+                rows: dashboard['policies'] as List<dynamic>? ?? const [],
+                titleKey: 'policy_number',
+                subtitleKey: 'template'),
+            _Section(
+                title: 'Services',
+                rows: dashboard['events'] as List<dynamic>? ?? const [],
+                titleKey: 'title',
+                subtitleKey: 'location'),
+            _NotificationSection(
+                rows: dashboard['notifications'] as List<dynamic>? ?? const []),
+            _Section(
+                title: 'Support requests',
+                rows:
+                    dashboard['support_requests'] as List<dynamic>? ?? const [],
+                titleKey: 'subject',
+                subtitleKey: 'status'),
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: () => _showSupportDialog(context, ref),
@@ -313,20 +373,31 @@ class ClientDashboardScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: subjectController, decoration: const InputDecoration(labelText: 'Subject')),
+                TextField(
+                    controller: subjectController,
+                    decoration: const InputDecoration(labelText: 'Subject')),
                 const SizedBox(height: 12),
-                TextField(controller: messageController, decoration: const InputDecoration(labelText: 'Message'), maxLines: 4),
+                TextField(
+                    controller: messageController,
+                    decoration: const InputDecoration(labelText: 'Message'),
+                    maxLines: 4),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
-                if (subjectController.text.trim().isEmpty || messageController.text.trim().isEmpty) {
+                if (subjectController.text.trim().isEmpty ||
+                    messageController.text.trim().isEmpty) {
                   return;
                 }
-                Navigator.pop(context, (subjectController.text.trim(), messageController.text.trim()));
+                Navigator.pop(context, (
+                  subjectController.text.trim(),
+                  messageController.text.trim()
+                ));
               },
               child: const Text('Send'),
             ),
@@ -339,7 +410,49 @@ class ClientDashboardScreen extends ConsumerWidget {
     if (result == null) {
       return;
     }
-    await ref.read(clientControllerProvider).submitSupport(result.$1, result.$2);
+    await ref
+        .read(clientControllerProvider)
+        .submitSupport(result.$1, result.$2);
+  }
+}
+
+class _NotificationSection extends ConsumerWidget {
+  const _NotificationSection({required this.rows});
+
+  final List<dynamic> rows;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 8),
+          child: Text('Notifications',
+              style: Theme.of(context).textTheme.titleLarge),
+        ),
+        if (rows.isEmpty)
+          const Card(child: ListTile(title: Text('No records yet.')))
+        else
+          for (final row in rows.cast<Map<String, dynamic>>())
+            Card(
+              child: ListTile(
+                title: Text((row['subject'] ?? 'Notification').toString()),
+                subtitle: Text((row['body'] ?? '').toString()),
+                trailing: row['status'] == 'read'
+                    ? const Icon(Icons.done, color: Colors.green)
+                    : TextButton(
+                        onPressed: row['id'] is int
+                            ? () => ref
+                                .read(clientControllerProvider)
+                                .markNotificationRead(row['id'] as int)
+                            : null,
+                        child: const Text('Mark read'),
+                      ),
+              ),
+            ),
+      ],
+    );
   }
 }
 
