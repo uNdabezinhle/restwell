@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/restwell_api_client.dart';
+import '../admin/admin_repository.dart';
 import 'auth_controller.dart';
 import 'auth_repository.dart';
 import 'token_storage.dart';
@@ -21,6 +22,10 @@ final dioProvider = Provider<Dio>((ref) {
 
 final apiClientProvider = Provider<RestWellApiClient>((ref) {
   return RestWellApiClient(ref.watch(dioProvider));
+});
+
+final adminRepositoryProvider = Provider<AdminRepository>((ref) {
+  return AdminRepository(ref.watch(apiClientProvider));
 });
 
 final tokenStorageProvider = Provider<TokenStorage>((ref) {

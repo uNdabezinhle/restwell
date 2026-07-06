@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../api/restwell_api_client.dart';
+import '../../admin/admin_repository.dart';
 import '../../auth/providers.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -39,6 +39,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _ModuleConfig('Website', Icons.language_outlined, '/api/websites/pages/'),
     _ModuleConfig('Apps', Icons.android_outlined, '/api/branded-apps/configs/'),
     _ModuleConfig(
+        'Notifications', Icons.notifications_outlined, '/api/notifications/messages/'),
+    _ModuleConfig(
         'Onboarding', Icons.school_outlined, '/api/onboarding/tasks/'),
     _ModuleConfig(
         'Help', Icons.help_outline, '/api/onboarding/published-articles/'),
@@ -51,16 +53,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Future<_DashboardData> _loadDashboard() async {
-    final api = ref.read(apiClientProvider);
+    final repository = ref.read(adminRepositoryProvider);
+    final summary = await repository.fetchDashboardSummary();
+    final features = await repository.fetchFeatures();
     final results = <String, List<Map<String, dynamic>>>{};
     for (final module in _modules.where((module) => module.path.isNotEmpty)) {
       try {
-        results[module.title] = await api.fetchList(module.path);
+        results[module.title] = await repository.fetchModuleRows(module.path);
       } on DioException {
         results[module.title] = const [];
       }
     }
-    return _DashboardData(results);
+    return _DashboardData(
+      rows: results,
+      summary: summary,
+      features: features,
+    );
   }
 
   void _refresh() {
@@ -124,7 +132,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     await _runAction(
-      () => ref.read(apiClientProvider).create('/api/onboarding/tasks/', {
+      () => ref.read(adminRepositoryProvider).createRecord('/api/onboarding/tasks/', {
         'title': result['title'],
         'description': result['description'],
         'category': 'platform_setup',
@@ -136,7 +144,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Future<void> _seedOnboardingTasks() async {
-    final api = ref.read(apiClientProvider);
+    final repository = ref.read(adminRepositoryProvider);
     final tasks = [
       (
         'Confirm tenant profile',
@@ -162,7 +170,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     await _runAction(() async {
       for (final task in tasks) {
-        await api.create('/api/onboarding/tasks/', {
+        await repository.createRecord('/api/onboarding/tasks/', {
           'title': task.$1,
           'description': task.$2,
           'category': task.$3,
@@ -176,7 +184,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _createBranding() async {
     await _runAction(
-      () => ref.read(apiClientProvider).create('/api/branding/settings/', {
+      () => ref.read(adminRepositoryProvider).createRecord('/api/branding/settings/', {
         'primary_color': '#0F766E',
         'secondary_color': '#2563EB',
         'email_from_name': 'RestWell Demo',
@@ -190,7 +198,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _createWebsiteShell() async {
     await _runAction(
-      () => ref.read(apiClientProvider).create('/api/websites/sites/', {
+      () => ref.read(adminRepositoryProvider).createRecord('/api/websites/sites/', {
         'name': 'RestWell Demo',
         'subdomain': 'restwell-demo',
         'is_published': true,
@@ -202,10 +210,65 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _completeTask(int id) async {
     await _runAction(
       () => ref
-          .read(apiClientProvider)
-          .post('/api/onboarding/tasks/$id/complete/'),
+          .read(adminRepositoryProvider)
+          .runWorkflow('/api/onboarding/tasks/$id/complete/'),
       'Task completed.',
     );
+  }
+
+  Future<void> _runModuleWorkflow(String moduleTitle, Map<String, dynamic> row) async {
+    final id = row['id'];
+    if (id is! int) {
+      return;
+    }
+    switch (moduleTitle) {
+      case 'Cases':
+        await _runAction(
+          () => ref.read(adminRepositoryProvider).runWorkflow(
+            '/api/cases/$id/advance-status/',
+            {'status': 'completed'},
+          ),
+          'Case marked completed.',
+        );
+        return;
+      case 'Financials':
+        final amount = row['balance_due']?.toString() ?? row['total_amount']?.toString() ?? '0.00';
+        await _runAction(
+          () => ref.read(adminRepositoryProvider).runWorkflow(
+            '/api/financials/invoices/$id/record-payment/',
+            {'amount': amount, 'method': 'cash'},
+          ),
+          'Payment recorded.',
+        );
+        return;
+      case 'Inventory':
+        await _runAction(
+          () => ref.read(adminRepositoryProvider).runWorkflow(
+            '/api/inventory/items/$id/adjust-stock/',
+            {'quantity': '1.00', 'transaction_type': 'stock_in', 'note': 'Admin quick adjustment'},
+          ),
+          'Stock adjusted.',
+        );
+        return;
+      case 'Mortuary':
+        await _runAction(
+          () => ref.read(adminRepositoryProvider).runWorkflow('/api/mortuary/records/$id/release/'),
+          'Mortuary record released.',
+        );
+        return;
+      case 'Website':
+        await _runAction(
+          () => ref.read(adminRepositoryProvider).runWorkflow('/api/websites/pages/$id/publish/'),
+          'Website page published.',
+        );
+        return;
+      case 'Notifications':
+        await _runAction(
+          () => ref.read(adminRepositoryProvider).runWorkflow('/api/notifications/messages/$id/send/'),
+          'Notification sent.',
+        );
+        return;
+    }
   }
 
   Future<void> _runAction(Future<Map<String, dynamic>> Function() action,
@@ -282,7 +345,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final data = snapshot.data ?? const _DashboardData({});
+                final data = snapshot.data ?? _DashboardData.empty();
                 return ListView(
                   padding: const EdgeInsets.all(24),
                   children: [
@@ -316,6 +379,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         onCompleteTask: selectedModule.title == 'Onboarding'
                             ? _completeTask
                             : null,
+                        onRunWorkflow: _runModuleWorkflow,
                       ),
                   ],
                 );
@@ -374,14 +438,14 @@ class _Overview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final countTiles = [
-      ('Branches', Icons.account_tree_outlined),
-      ('Cases', Icons.assignment_outlined),
-      ('Policies', Icons.verified_user_outlined),
-      ('Financials', Icons.payments_outlined),
-      ('Inventory', Icons.inventory_2_outlined),
-      ('Scheduling', Icons.event_outlined),
-      ('Mortuary', Icons.local_hospital_outlined),
-      ('Onboarding', Icons.school_outlined),
+      ('Branches', Icons.account_tree_outlined, data.rowsFor('Branches').length),
+      ('Cases', Icons.assignment_outlined, data.summary.operations['cases'] ?? 0),
+      ('Policies', Icons.verified_user_outlined, data.summary.commercial['policy_templates'] ?? 0),
+      ('Financials', Icons.payments_outlined, data.summary.commercial['invoices'] ?? 0),
+      ('Inventory', Icons.inventory_2_outlined, data.summary.commercial['inventory_items'] ?? 0),
+      ('Scheduling', Icons.event_outlined, data.summary.operations['scheduled_events'] ?? 0),
+      ('Mortuary', Icons.local_hospital_outlined, data.summary.operations['mortuary_records'] ?? 0),
+      ('Onboarding', Icons.school_outlined, data.summary.digital['onboarding_open'] ?? 0),
     ];
 
     return Column(
@@ -402,13 +466,31 @@ class _Overview extends StatelessWidget {
                       children: [
                         Icon(tile.$2),
                         const SizedBox(height: 14),
-                        Text('${data.rowsFor(tile.$1).length}',
+                        Text('${tile.$3}',
                             style: Theme.of(context).textTheme.headlineMedium),
                         Text(tile.$1),
                       ],
                     ),
                   ),
                 ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Text('Enabled modules', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final feature in data.features)
+              Chip(
+                avatar: Icon(
+                  feature.isEnabled ? Icons.check_circle : Icons.block,
+                  color: feature.isEnabled ? Colors.green : Colors.red,
+                  size: 18,
+                ),
+                label: Text(feature.code.replaceAll('_', ' ')),
               ),
           ],
         ),
@@ -454,6 +536,7 @@ class _ModuleView extends StatelessWidget {
     this.onCreateBranding,
     this.onCreateWebsite,
     this.onCompleteTask,
+    required this.onRunWorkflow,
   });
 
   final _ModuleConfig module;
@@ -462,6 +545,7 @@ class _ModuleView extends StatelessWidget {
   final VoidCallback? onCreateBranding;
   final VoidCallback? onCreateWebsite;
   final Future<void> Function(int id)? onCompleteTask;
+  final Future<void> Function(String moduleTitle, Map<String, dynamic> row) onRunWorkflow;
 
   @override
   Widget build(BuildContext context) {
@@ -507,33 +591,64 @@ class _ModuleView extends StatelessWidget {
                     maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(_rowSubtitle(row),
                     maxLines: 2, overflow: TextOverflow.ellipsis),
-                trailing: _rowTrailing(row, onCompleteTask),
+                trailing: _rowTrailing(row),
               ),
             ),
       ],
     );
   }
 
-  Widget? _rowTrailing(
-      Map<String, dynamic> row, Future<void> Function(int id)? onCompleteTask) {
-    if (onCompleteTask == null) {
+  Widget? _rowTrailing(Map<String, dynamic> row) {
+    final workflowLabel = _workflowLabel(module.title, row);
+    if (onCompleteTask == null && workflowLabel == null) {
       return null;
     }
-    final completed =
-        row['is_completed'] == true || row['completed_at'] != null;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onCompleteTask != null) _completeTaskButton(row),
+        if (workflowLabel != null)
+          TextButton(
+            onPressed: () => onRunWorkflow(module.title, row),
+            child: Text(workflowLabel),
+          ),
+      ],
+    );
+  }
+
+  Widget _completeTaskButton(Map<String, dynamic> row) {
+    final completed = row['is_completed'] == true || row['completed_at'] != null;
     if (completed) {
       return const Icon(Icons.check_circle, color: Colors.green);
     }
     final id = row['id'];
     if (id is! int) {
-      return null;
+      return const SizedBox.shrink();
     }
     return IconButton(
       tooltip: 'Complete task',
-      onPressed: () => onCompleteTask(id),
+      onPressed: () => onCompleteTask!(id),
       icon: const Icon(Icons.check_circle_outline),
     );
   }
+}
+
+String? _workflowLabel(String moduleTitle, Map<String, dynamic> row) {
+  switch (moduleTitle) {
+    case 'Cases':
+      return row['status'] == 'completed' ? null : 'Complete';
+    case 'Financials':
+      return row['status'] == 'paid' ? null : 'Record payment';
+    case 'Inventory':
+      return 'Stock +1';
+    case 'Mortuary':
+      return row['status'] == 'released' ? null : 'Release';
+    case 'Website':
+      return row['is_published'] == true ? null : 'Publish';
+    case 'Notifications':
+      return row['status'] == 'sent' ? null : 'Send';
+  }
+  return null;
 }
 
 class _EmptyState extends StatelessWidget {
@@ -613,9 +728,23 @@ String _labelFor(String key) {
 }
 
 class _DashboardData {
-  const _DashboardData(this.rows);
+  const _DashboardData({
+    required this.rows,
+    required this.summary,
+    required this.features,
+  });
+
+  factory _DashboardData.empty() {
+    return const _DashboardData(
+      rows: {},
+      summary: DashboardSummary(operations: {}, commercial: {}, digital: {}),
+      features: [],
+    );
+  }
 
   final Map<String, List<Map<String, dynamic>>> rows;
+  final DashboardSummary summary;
+  final List<TenantFeature> features;
 
   List<Map<String, dynamic>> rowsFor(String title) {
     return rows[title] ?? const [];
