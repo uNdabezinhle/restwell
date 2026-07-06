@@ -6,11 +6,12 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import User
-from cases.models import Case, Deceased, FamilyMember
+from cases.models import Case, CaseDocument, Deceased, FamilyMember
 from client_portal.models import ClientSupportRequest
 from financials.models import Invoice, InvoiceLineItem, Payment
 from notifications.models import NotificationMessage
 from policies.models import PolicyEnrollment, PolicyTemplate, Underwriter
+from scheduling.models import CalendarEvent
 from tenants.models import Branch, Tenant
 from website_builder.models import WebsiteBlock, WebsitePage, WebsiteSite
 
@@ -36,7 +37,21 @@ class ClientPortalApiTests(APITestCase):
             role=User.Role.TENANT_ADMIN,
         )
         self.deceased = Deceased.objects.create(tenant=self.tenant, branch=self.branch, first_name="Thabo", last_name="Mokoena")
-        self.case = Case.objects.create(tenant=self.tenant, branch=self.branch, deceased=self.deceased, reference="CASE-001")
+        self.case = Case.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            deceased=self.deceased,
+            reference="CASE-001",
+            service_date=date.today(),
+            notes="Family viewing at 10:00.",
+        )
+        CaseDocument.objects.create(
+            tenant=self.tenant,
+            case=self.case,
+            document_type=CaseDocument.DocumentType.ID_COPY,
+            title="ID copy",
+            uploaded_by=self.admin_user,
+        )
         self.family_member = FamilyMember.objects.create(
             tenant=self.tenant,
             case=self.case,
@@ -88,6 +103,17 @@ class ClientPortalApiTests(APITestCase):
             status=Payment.Status.COMPLETED,
             received_by=self.admin_user,
         )
+        CalendarEvent.objects.create(
+            tenant=self.tenant,
+            branch=self.branch,
+            case=self.case,
+            title="Memorial service",
+            event_type=CalendarEvent.EventType.FUNERAL_SERVICE,
+            starts_at="2026-07-07T10:00:00Z",
+            ends_at="2026-07-07T12:00:00Z",
+            location="Johannesburg Chapel",
+            created_by=self.admin_user,
+        )
         self.notification = NotificationMessage.objects.create(
             tenant=self.tenant,
             recipient_user=self.family_user,
@@ -134,12 +160,17 @@ class ClientPortalApiTests(APITestCase):
         self.assertEqual(response.data["tenant"]["slug"], self.tenant.slug)
         self.assertEqual(response.data["family_members"][0]["name"], "Lerato Mokoena")
         self.assertEqual(response.data["cases"][0]["reference"], "CASE-001")
+        self.assertEqual(response.data["cases"][0]["branch"], "Johannesburg")
+        self.assertEqual(response.data["cases"][0]["notes"], "Family viewing at 10:00.")
+        self.assertEqual(response.data["documents"][0]["title"], "ID copy")
         self.assertEqual(response.data["policies"][0]["policy_number"], "POL-001")
         self.assertEqual(response.data["financials"]["invoice_count"], 1)
         self.assertEqual(Decimal(response.data["financials"]["total_amount"]), Decimal("8500.00"))
         self.assertEqual(Decimal(response.data["financials"]["amount_paid"]), Decimal("2500.00"))
         self.assertEqual(response.data["invoices"][0]["invoice_number"], "INV-001")
         self.assertEqual(len(response.data["invoices"][0]["payments"]), 1)
+        self.assertEqual(response.data["events"][0]["title"], "Memorial service")
+        self.assertEqual(response.data["events"][0]["location"], "Johannesburg Chapel")
         self.assertEqual(response.data["notifications"][0]["subject"], "Welcome")
         self.assertEqual(response.data["support_requests"], [])
         self.assertEqual(response.data["public_pages"][0]["slug"], "service")

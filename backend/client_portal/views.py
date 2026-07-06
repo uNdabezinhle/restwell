@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from branding.models import TenantBranding
-from cases.models import FamilyMember
+from cases.models import CaseDocument, FamilyMember
 from financials.models import Invoice
 from notifications.models import NotificationMessage
 from policies.models import PolicyEnrollment
@@ -39,6 +39,7 @@ def client_dashboard(request):
     policies = PolicyEnrollment.objects.filter(tenant=tenant, family_member__in=family_members).select_related("policy_template", "underwriter")
     invoices = Invoice.objects.filter(tenant=tenant, case_id__in=case_ids).prefetch_related("payments").order_by("-issue_date", "-id")
     events = CalendarEvent.objects.filter(tenant=tenant, case_id__in=case_ids).order_by("starts_at")
+    documents = CaseDocument.objects.filter(tenant=tenant, case_id__in=case_ids).order_by("-uploaded_at")
     notifications = NotificationMessage.objects.filter(tenant=tenant, recipient_user=request.user).order_by("-created_at")[:10]
     support_requests = ClientSupportRequest.objects.filter(tenant=tenant, created_by=request.user).order_by("-created_at")[:10]
     public_pages = WebsitePage.objects.filter(
@@ -71,9 +72,17 @@ def client_dashboard(request):
                     "reference": member.case.reference,
                     "status": member.case.status,
                     "service_date": member.case.service_date,
+                    "notes": member.case.notes,
+                    "branch": member.case.branch.name,
                     "deceased": str(member.case.deceased),
+                    "deceased_details": {
+                        "first_name": member.case.deceased.first_name,
+                        "last_name": member.case.deceased.last_name,
+                        "date_of_death": member.case.deceased.date_of_death,
+                        "place_of_death": member.case.deceased.place_of_death,
+                    },
                 }
-                for member in family_members.select_related("case", "case__deceased")
+                for member in family_members.select_related("case", "case__branch", "case__deceased")
             ],
             "policies": [
                 {
@@ -119,12 +128,25 @@ def client_dashboard(request):
             "events": [
                 {
                     "id": event.id,
+                    "case": event.case_id,
                     "title": event.title,
+                    "event_type": event.event_type,
                     "starts_at": event.starts_at,
                     "ends_at": event.ends_at,
                     "location": event.location,
                 }
                 for event in events
+            ],
+            "documents": [
+                {
+                    "id": document.id,
+                    "case": document.case_id,
+                    "title": document.title,
+                    "document_type": document.document_type,
+                    "file": document.file.url if document.file else "",
+                    "uploaded_at": document.uploaded_at,
+                }
+                for document in documents
             ],
             "notifications": [
                 {

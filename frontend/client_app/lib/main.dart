@@ -333,11 +333,8 @@ class ClientDashboardScreen extends ConsumerWidget {
                 rows: dashboard['family_members'] as List<dynamic>? ?? const [],
                 titleKey: 'name',
                 subtitleKey: 'relationship'),
-            _Section(
-                title: 'Cases',
-                rows: dashboard['cases'] as List<dynamic>? ?? const [],
-                titleKey: 'reference',
-                subtitleKey: 'deceased'),
+            _CaseSection(
+                rows: dashboard['cases'] as List<dynamic>? ?? const []),
             _Section(
                 title: 'Policies',
                 rows: dashboard['policies'] as List<dynamic>? ?? const [],
@@ -347,11 +344,13 @@ class ClientDashboardScreen extends ConsumerWidget {
                 summary: dashboard['financials'] as Map<String, dynamic>?),
             _InvoiceSection(
                 rows: dashboard['invoices'] as List<dynamic>? ?? const []),
+            _ServiceSection(
+                rows: dashboard['events'] as List<dynamic>? ?? const []),
             _Section(
-                title: 'Services',
-                rows: dashboard['events'] as List<dynamic>? ?? const [],
+                title: 'Documents',
+                rows: dashboard['documents'] as List<dynamic>? ?? const [],
                 titleKey: 'title',
-                subtitleKey: 'location'),
+                subtitleKey: 'document_type'),
             _NotificationSection(
                 rows: dashboard['notifications'] as List<dynamic>? ?? const []),
             _PublicPagesSection(
@@ -429,6 +428,111 @@ class ClientDashboardScreen extends ConsumerWidget {
     await ref
         .read(clientControllerProvider)
         .submitSupport(result.$1, result.$2);
+  }
+}
+
+class _CaseSection extends StatelessWidget {
+  const _CaseSection({required this.rows});
+
+  final List<dynamic> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 8),
+          child: Text('Cases', style: Theme.of(context).textTheme.titleLarge),
+        ),
+        if (rows.isEmpty)
+          const Card(child: ListTile(title: Text('No records yet.')))
+        else
+          for (final row in rows.cast<Map<String, dynamic>>())
+            Card(
+              child: ExpansionTile(
+                title: Text((row['reference'] ?? 'Case').toString()),
+                subtitle: Text(
+                  '${row['deceased'] ?? '-'} | ${row['status'] ?? '-'}',
+                ),
+                children: [
+                  ListTile(
+                    title: Text('Branch ${(row['branch'] ?? '-').toString()}'),
+                    subtitle: Text(
+                      'Service date ${(row['service_date'] ?? '-').toString()}',
+                    ),
+                  ),
+                  if ((row['notes'] ?? '').toString().isNotEmpty)
+                    ListTile(
+                      leading: const Icon(Icons.notes_outlined),
+                      title: const Text('Notes'),
+                      subtitle: Text(row['notes'].toString()),
+                    ),
+                  if (row['deceased_details'] is Map<String, dynamic>)
+                    _DeceasedDetails(
+                        details:
+                            row['deceased_details'] as Map<String, dynamic>),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+class _DeceasedDetails extends StatelessWidget {
+  const _DeceasedDetails({required this.details});
+
+  final Map<String, dynamic> details;
+
+  @override
+  Widget build(BuildContext context) {
+    final place = (details['place_of_death'] ?? '').toString();
+    final date = (details['date_of_death'] ?? '').toString();
+    if (place.isEmpty && date.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return ListTile(
+      leading: const Icon(Icons.person_outline),
+      title: const Text('Deceased details'),
+      subtitle: Text([
+        if (date.isNotEmpty) 'Date of death: $date',
+        if (place.isNotEmpty) 'Place: $place',
+      ].join(' | ')),
+    );
+  }
+}
+
+class _ServiceSection extends StatelessWidget {
+  const _ServiceSection({required this.rows});
+
+  final List<dynamic> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 8),
+          child:
+              Text('Services', style: Theme.of(context).textTheme.titleLarge),
+        ),
+        if (rows.isEmpty)
+          const Card(child: ListTile(title: Text('No scheduled services yet.')))
+        else
+          for (final row in rows.cast<Map<String, dynamic>>())
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.event_outlined),
+                title: Text((row['title'] ?? 'Service').toString()),
+                subtitle: Text(
+                  '${row['location'] ?? '-'} | ${_dateTimeText(row['starts_at'])}',
+                ),
+              ),
+            ),
+      ],
+    );
   }
 }
 
@@ -759,6 +863,23 @@ Color _hexColor(String? value) {
 String _money(dynamic value) {
   final amount = _numberValue(value);
   return 'R ${amount.toStringAsFixed(2)}';
+}
+
+String _dateTimeText(dynamic value) {
+  final text = value?.toString() ?? '';
+  if (text.isEmpty) {
+    return '-';
+  }
+  final parsed = DateTime.tryParse(text);
+  if (parsed == null) {
+    return text;
+  }
+  final local = parsed.toLocal();
+  final date =
+      '${local.year.toString().padLeft(4, '0')}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+  final time =
+      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  return '$date $time';
 }
 
 double _numberValue(dynamic value) {
