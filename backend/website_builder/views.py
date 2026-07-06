@@ -1,3 +1,6 @@
+from html import escape
+
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -118,3 +121,71 @@ def public_page(request, tenant_slug, page_slug):
             },
         }
     )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def public_page_html(request, tenant_slug, page_slug):
+    tenant = get_object_or_404(Tenant, slug=tenant_slug, is_active=True)
+    site = get_object_or_404(WebsiteSite, tenant=tenant, is_published=True)
+    page = get_object_or_404(WebsitePage, tenant=tenant, site=site, slug=page_slug, is_published=True)
+    branding = TenantBranding.objects.filter(tenant=tenant, is_active=True).first()
+    blocks = WebsiteBlock.objects.filter(tenant=tenant, page=page, is_visible=True)
+    primary_color = branding.primary_color if branding else "#0F766E"
+    secondary_color = branding.secondary_color if branding else "#2563EB"
+    remove_powered_by = branding.remove_powered_by if branding else False
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(page.title)} | {escape(site.name)}</title>
+  <style>
+    :root {{ color-scheme: light; --primary: {escape(primary_color)}; --secondary: {escape(secondary_color)}; }}
+    body {{ margin: 0; font-family: Arial, sans-serif; color: #17201d; background: #f7faf8; }}
+    header {{ background: var(--primary); color: white; padding: 28px min(8vw, 72px); }}
+    main {{ max-width: 980px; margin: 0 auto; padding: 32px 20px 56px; }}
+    section {{ background: white; border: 1px solid #d9e5df; border-radius: 8px; padding: 24px; margin-bottom: 18px; }}
+    h1, h2 {{ margin: 0 0 12px; }}
+    p {{ line-height: 1.55; }}
+    .hero {{ border-left: 8px solid var(--secondary); }}
+    .cta a {{ display: inline-block; color: white; background: var(--primary); padding: 10px 16px; border-radius: 6px; text-decoration: none; }}
+    footer {{ color: #5d6b66; text-align: center; padding: 24px; }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{escape(page.title)}</h1>
+    <p>{escape(site.name)}</p>
+  </header>
+  <main>
+    {_render_blocks(blocks)}
+  </main>
+  {"" if remove_powered_by else "<footer>Powered by RestWell</footer>"}
+</body>
+</html>"""
+    return HttpResponse(html)
+
+
+def _render_blocks(blocks):
+    rendered = [_render_block(block) for block in blocks]
+    return "\n".join(rendered) if rendered else "<section><p>This page has no visible content yet.</p></section>"
+
+
+def _render_block(block):
+    content = block.content or {}
+    headline = escape(str(content.get("headline") or content.get("title") or block.get_block_type_display()))
+    body = escape(str(content.get("body") or content.get("text") or ""))
+    link_label = escape(str(content.get("link_label") or content.get("button_label") or "Contact us"))
+    link_url = escape(str(content.get("link_url") or content.get("url") or "#"))
+    css_class = "hero" if block.block_type == WebsiteBlock.BlockType.HERO else "cta" if block.block_type == WebsiteBlock.BlockType.CTA else ""
+
+    if block.block_type == WebsiteBlock.BlockType.CTA:
+        return f'<section class="{css_class}"><h2>{headline}</h2><p>{body}</p><a href="{link_url}">{link_label}</a></section>'
+    if block.block_type == WebsiteBlock.BlockType.CONTACT:
+        phone = escape(str(content.get("phone") or ""))
+        email = escape(str(content.get("email") or ""))
+        details = "".join([f"<p>{value}</p>" for value in [phone, email] if value])
+        return f'<section><h2>{headline}</h2><p>{body}</p>{details}</section>'
+    return f'<section class="{css_class}"><h2>{headline}</h2><p>{body}</p></section>'

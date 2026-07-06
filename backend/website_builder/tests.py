@@ -136,6 +136,43 @@ class WebsiteBuilderApiTests(APITestCase):
         self.assertEqual(response.data["blocks"][0]["content"]["headline"], "Dignified care")
         self.assertEqual(response.data["branding"]["primary_color"], "#123ABC")
 
+    def test_public_html_renders_published_page_blocks(self):
+        site = self.create_site(published=True)
+        TenantBranding.objects.create(tenant=self.tenant, primary_color="#123ABC", secondary_color="#456DEF")
+        page = WebsitePage.objects.create(
+            tenant=self.tenant,
+            site=site,
+            slug="home",
+            title="Welcome <Home>",
+            page_type=WebsitePage.PageType.HOME,
+            is_published=True,
+        )
+        WebsiteBlock.objects.create(
+            tenant=self.tenant,
+            page=page,
+            block_type=WebsiteBlock.BlockType.HERO,
+            content={"headline": "Dignified <care>", "body": "Serving families."},
+            sort_order=1,
+        )
+        WebsiteBlock.objects.create(
+            tenant=self.tenant,
+            page=page,
+            block_type=WebsiteBlock.BlockType.CTA,
+            content={"headline": "Need help?", "body": "Contact our team.", "link_label": "Call us", "link_url": "/contact"},
+            sort_order=2,
+        )
+
+        response = self.client.get(reverse("website-public-page-html", args=[self.tenant.slug, "home"]))
+        html = response.content.decode()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("text/html", response["Content-Type"])
+        self.assertIn("#123ABC", html)
+        self.assertIn("Welcome &lt;Home&gt;", html)
+        self.assertIn("Dignified &lt;care&gt;", html)
+        self.assertIn("Call us", html)
+        self.assertIn("Powered by RestWell", html)
+
     def test_creates_website_block_for_current_tenant_page(self):
         self.authenticate()
         site = self.create_site()
