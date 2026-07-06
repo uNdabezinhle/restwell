@@ -1,10 +1,13 @@
 from django.db.models import Sum
-from rest_framework.decorators import api_view, permission_classes
+from django.utils import timezone
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from platform_core.models import AuditLog
+from platform_core.services import write_audit_log
 from .models import DebtorAccount, Invoice, InvoiceLineItem, Payment
 from .serializers import DebtorAccountSerializer, InvoiceLineItemSerializer, InvoiceSerializer, PaymentSerializer
 
@@ -47,6 +50,35 @@ class InvoiceViewSet(TenantScopedFinancialViewSet):
         if enrollment and enrollment.tenant_id != tenant.id:
             raise ValidationError({"policy_enrollment": "Policy enrollment must belong to the current tenant."})
         serializer.save(tenant=tenant, created_by=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="record-payment")
+    def record_payment(self, request, pk=None):
+        invoice = self.get_object()
+        amount = request.data.get("amount")
+        method = request.data.get("method", Payment.Method.CASH)
+        if method not in {choice[0] for choice in Payment.Method.choices}:
+            raise ValidationError({"method": "Choose a valid payment method."})
+        if amount is None:
+            raise ValidationError({"amount": "Payment amount is required."})
+        payment = Payment.objects.create(
+            tenant=invoice.tenant,
+            invoice=invoice,
+            amount=amount,
+            method=method,
+            status=Payment.Status.COMPLETED,
+            provider_reference=request.data.get("provider_reference", ""),
+            received_by=request.user,
+            received_at=timezone.now(),
+        )
+        write_audit_log(
+            action=AuditLog.Action.WORKFLOW,
+            resource=payment,
+            actor=request.user,
+            description=f"Manual payment recorded for invoice {invoice.invoice_number}.",
+            metadata={"invoice": invoice.id, "amount": str(amount), "method": method},
+        )
+        invoice.refresh_from_db()
+        return Response(self.get_serializer(invoice).data)
 
 
 class InvoiceLineItemViewSet(TenantScopedFinancialViewSet):

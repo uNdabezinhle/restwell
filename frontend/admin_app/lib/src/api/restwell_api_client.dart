@@ -77,4 +77,34 @@ class RestWellApiClient {
     final response = await _dio.get<Map<String, dynamic>>('/api/accounts/me/');
     return CurrentUser.fromJson(response.data!);
   }
+
+  Future<List<Map<String, dynamic>>> fetchList(String path) async {
+    final response = await _dio.get<dynamic>(path);
+    final data = response.data;
+    if (data is List) {
+      return data.cast<Map<String, dynamic>>();
+    }
+    if (data is Map<String, dynamic> && data['results'] is List) {
+      return (data['results'] as List).cast<Map<String, dynamic>>();
+    }
+    return const [];
+  }
+
+  Future<Map<String, dynamic>> fetchObject(String path) async {
+    final response = await _dio.get<Map<String, dynamic>>(path);
+    return response.data!;
+  }
+
+  Future<Map<String, dynamic>> create(
+      String path, Map<String, dynamic> data) async {
+    final response = await _dio.post<Map<String, dynamic>>(path, data: data);
+    return response.data!;
+  }
+
+  Future<Map<String, dynamic>> post(String path,
+      [Map<String, dynamic>? data]) async {
+    final response =
+        await _dio.post<Map<String, dynamic>>(path, data: data ?? const {});
+    return response.data!;
+  }
 }

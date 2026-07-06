@@ -1,9 +1,13 @@
 from decimal import Decimal
 
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from platform_core.models import AuditLog
+from platform_core.services import write_audit_log
 from .models import InventoryItem, InventoryTransaction
 from .serializers import InventoryItemSerializer, InventoryTransactionSerializer
 
@@ -37,6 +41,35 @@ class InventoryItemViewSet(TenantScopedInventoryViewSet):
         if branch.tenant_id != tenant.id:
             raise ValidationError({"branch": "Branch must belong to the current tenant."})
         serializer.save(tenant=tenant)
+
+    @action(detail=True, methods=["post"], url_path="adjust-stock")
+    def adjust_stock(self, request, pk=None):
+        item = self.get_object()
+        quantity = Decimal(str(request.data.get("quantity", "0")))
+        transaction_type = request.data.get("transaction_type", InventoryTransaction.TransactionType.ADJUSTMENT)
+        if transaction_type not in {choice[0] for choice in InventoryTransaction.TransactionType.choices}:
+            raise ValidationError({"transaction_type": "Choose a valid transaction type."})
+        if quantity <= 0:
+            raise ValidationError({"quantity": "Quantity must be greater than zero."})
+        if transaction_type == InventoryTransaction.TransactionType.STOCK_OUT and item.quantity_on_hand < quantity:
+            raise ValidationError({"quantity": "Insufficient stock on hand."})
+        transaction = InventoryTransaction.objects.create(
+            tenant=item.tenant,
+            item=item,
+            transaction_type=transaction_type,
+            quantity=quantity,
+            note=request.data.get("note", ""),
+            created_by=request.user,
+        )
+        write_audit_log(
+            action=AuditLog.Action.WORKFLOW,
+            resource=transaction,
+            actor=request.user,
+            description=f"Inventory {transaction_type} recorded for {item.name}.",
+            metadata={"item": item.id, "quantity": str(quantity)},
+        )
+        item.refresh_from_db()
+        return Response(self.get_serializer(item).data)
 
 
 class InventoryTransactionViewSet(TenantScopedInventoryViewSet):

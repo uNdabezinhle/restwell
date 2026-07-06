@@ -44,3 +44,31 @@ class WebsitePage(models.Model):
 
     def __str__(self):
         return f"{self.site}: {self.title}"
+
+
+class WebsiteBlock(models.Model):
+    class BlockType(models.TextChoices):
+        HERO = "hero", "Hero"
+        TEXT = "text", "Text"
+        SERVICES = "services", "Services"
+        CONTACT = "contact", "Contact"
+        MEMORIAL = "memorial", "Memorial"
+        GALLERY = "gallery", "Gallery"
+        CTA = "cta", "Call To Action"
+        SERVICE_SCHEDULE = "service_schedule", "Service Schedule"
+        INQUIRY_FORM = "inquiry_form", "Inquiry Form"
+
+    tenant = models.ForeignKey("tenants.Tenant", related_name="website_blocks", on_delete=models.CASCADE)
+    page = models.ForeignKey(WebsitePage, related_name="blocks", on_delete=models.CASCADE)
+    block_type = models.CharField(max_length=40, choices=BlockType.choices)
+    content = models.JSONField(default=dict, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_visible = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["page", "sort_order", "id"]
+
+    def __str__(self):
+        return f"{self.page}: {self.block_type}"

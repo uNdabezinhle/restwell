@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 from branding.models import TenantBranding
 from tenants.models import Branch, Tenant
-from website_builder.models import WebsitePage, WebsiteSite
+from website_builder.models import WebsiteBlock, WebsitePage, WebsiteSite
 
 
 class WebsiteBuilderApiTests(APITestCase):
@@ -111,7 +111,7 @@ class WebsiteBuilderApiTests(APITestCase):
     def test_public_preview_returns_published_page_with_branding(self):
         site = self.create_site(published=True)
         TenantBranding.objects.create(tenant=self.tenant, primary_color="#123ABC", secondary_color="#456DEF")
-        WebsitePage.objects.create(
+        page = WebsitePage.objects.create(
             tenant=self.tenant,
             site=site,
             slug="home",
@@ -120,10 +120,37 @@ class WebsiteBuilderApiTests(APITestCase):
             content={"headline": "RestWell Demo"},
             is_published=True,
         )
+        WebsiteBlock.objects.create(
+            tenant=self.tenant,
+            page=page,
+            block_type=WebsiteBlock.BlockType.HERO,
+            content={"headline": "Dignified care"},
+            sort_order=1,
+        )
 
         response = self.client.get(reverse("website-public-page", args=[self.tenant.slug, "home"]))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["title"], "Welcome")
         self.assertEqual(response.data["content"]["headline"], "RestWell Demo")
+        self.assertEqual(response.data["blocks"][0]["content"]["headline"], "Dignified care")
         self.assertEqual(response.data["branding"]["primary_color"], "#123ABC")
+
+    def test_creates_website_block_for_current_tenant_page(self):
+        self.authenticate()
+        site = self.create_site()
+        page = WebsitePage.objects.create(tenant=self.tenant, site=site, slug="home", title="Home")
+
+        response = self.client.post(
+            reverse("website-block-list"),
+            {
+                "page": page.id,
+                "block_type": WebsiteBlock.BlockType.TEXT,
+                "content": {"body": "About our services"},
+                "sort_order": 2,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["tenant"], self.tenant.id)

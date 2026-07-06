@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -7,13 +7,17 @@ from rest_framework.viewsets import ModelViewSet
 
 from accounts.permissions import IsTenantAdminOrPlatformAdmin
 from branding.models import TenantBranding
+from platform_core.models import AuditLog, TenantFeature
+from platform_core.permissions import HasTenantFeature
+from platform_core.services import write_audit_log
 from tenants.models import Tenant
-from .models import WebsitePage, WebsiteSite
-from .serializers import WebsitePageSerializer, WebsiteSiteSerializer
+from .models import WebsiteBlock, WebsitePage, WebsiteSite
+from .serializers import WebsiteBlockSerializer, WebsitePageSerializer, WebsiteSiteSerializer
 
 
 class TenantScopedWebsiteViewSet(ModelViewSet):
-    permission_classes = [IsTenantAdminOrPlatformAdmin]
+    permission_classes = [IsTenantAdminOrPlatformAdmin, HasTenantFeature]
+    feature_code = TenantFeature.Code.WEBSITE_BUILDER
     tenant_field = "tenant_id"
 
     def get_queryset(self):
@@ -46,7 +50,7 @@ class WebsiteSiteViewSet(TenantScopedWebsiteViewSet):
 
 
 class WebsitePageViewSet(TenantScopedWebsiteViewSet):
-    queryset = WebsitePage.objects.select_related("tenant", "site")
+    queryset = WebsitePage.objects.select_related("tenant", "site").prefetch_related("blocks")
     serializer_class = WebsitePageSerializer
 
     def perform_create(self, serializer):
@@ -62,6 +66,31 @@ class WebsitePageViewSet(TenantScopedWebsiteViewSet):
             raise ValidationError({"site": "Website site must belong to this page tenant."})
         serializer.save(tenant=serializer.instance.tenant)
 
+    @action(detail=True, methods=["post"], url_path="publish")
+    def publish(self, request, pk=None):
+        page = self.get_object()
+        page.is_published = True
+        page.save(update_fields=["is_published", "updated_at"])
+        write_audit_log(
+            action=AuditLog.Action.WORKFLOW,
+            resource=page,
+            actor=request.user,
+            description=f"Website page {page.slug} published.",
+        )
+        return Response(self.get_serializer(page).data)
+
+
+class WebsiteBlockViewSet(TenantScopedWebsiteViewSet):
+    queryset = WebsiteBlock.objects.select_related("tenant", "page", "page__site")
+    serializer_class = WebsiteBlockSerializer
+
+    def perform_create(self, serializer):
+        tenant = self.current_tenant()
+        page = serializer.validated_data["page"]
+        if page.tenant_id != tenant.id:
+            raise ValidationError({"page": "Website page must belong to the current tenant."})
+        serializer.save(tenant=tenant)
+
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -70,6 +99,7 @@ def public_page(request, tenant_slug, page_slug):
     site = get_object_or_404(WebsiteSite, tenant=tenant, is_published=True)
     page = get_object_or_404(WebsitePage, tenant=tenant, site=site, slug=page_slug, is_published=True)
     branding = TenantBranding.objects.filter(tenant=tenant, is_active=True).first()
+    blocks = WebsiteBlock.objects.filter(tenant=tenant, page=page, is_visible=True)
 
     return Response(
         {
@@ -79,6 +109,7 @@ def public_page(request, tenant_slug, page_slug):
             "title": page.title,
             "page_type": page.page_type,
             "content": page.content,
+            "blocks": WebsiteBlockSerializer(blocks, many=True).data,
             "branding": {
                 "primary_color": branding.primary_color if branding else "#0F766E",
                 "secondary_color": branding.secondary_color if branding else "#2563EB",

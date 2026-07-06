@@ -4,12 +4,15 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from accounts.permissions import IsTenantAdminOrPlatformAdmin
+from platform_core.models import TenantFeature
+from platform_core.permissions import HasTenantFeature
 from .models import AppBuildRequest, TenantAppConfig
 from .serializers import AppBuildRequestSerializer, TenantAppConfigSerializer
 
 
 class TenantScopedBrandedAppViewSet(ModelViewSet):
-    permission_classes = [IsTenantAdminOrPlatformAdmin]
+    permission_classes = [IsTenantAdminOrPlatformAdmin, HasTenantFeature]
+    feature_code = TenantFeature.Code.BRANDED_APPS
     tenant_field = "tenant_id"
 
     def get_queryset(self):

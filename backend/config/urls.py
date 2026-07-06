@@ -64,4 +64,6 @@ urlpatterns = [
     path("api/geolocation/", include("geolocation.urls")),
     path("api/branded-apps/", include("branded_apps.urls")),
     path("api/onboarding/", include("onboarding.urls")),
+    path("api/", include("platform_core.urls")),
+    path("api/notifications/", include("notifications.urls")),
 ]
